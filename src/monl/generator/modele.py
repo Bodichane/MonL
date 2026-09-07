@@ -1,86 +1,12 @@
 """De l'AST validé au modèle que le générateur manipule."""
 
-from ..ir import AccessPolicy, EffectPlan, EntityModel, FieldPolicy
+from ..ir import EffectPlan, ForeignKeyPlacement
+from ..planning import plan_foreign_keys
 
 
 class ModeleMixin:
     """De l'AST validé au modèle que le générateur manipule."""
 
-    def _build_entity_models(self) -> dict[str, EntityModel]:
-        """Consolide une fois les politiques réparties dans l'IR validée."""
-        models = {}
-        for entity, fields in self.entities.items():
-            derived = {r["field"]: r for r in self.derived_by_entity.get(entity, [])}
-            aggregated = {
-                r["field"]: r for r in self.aggregated_by_entity.get(entity, [])
-            }
-            numbered = {
-                r["field"]: r for r in self.numbered_fields_by_entity.get(entity, [])
-            }
-            generated = set(self.generated_fields_by_entity.get(entity, []))
-            hidden = set(self.hidden_fields_by_entity.get(entity, []))
-            categorized = {
-                r["field"] for r in self.categorized_fields_by_entity.get(entity, [])
-            }
-            timestamped = set(self.timestamp_fields_by_entity.get(entity, []))
-            postpayment = set(
-                self.postpayment_writable_by_entity.get(entity, {}).get("fields", [])
-            )
-            policies = {}
-            for name, type_ in fields.items():
-                derived_rule = derived.get(name)
-                aggregate_rule = aggregated.get(name)
-                numbering_rule = numbered.get(name)
-                upload_rule = next(
-                    (u for u in self.upload_fields_by_entity.get(entity, [])
-                     if u["field"] == name), None)
-                server_generated = (
-                    name in generated
-                    or derived_rule is not None
-                    or aggregate_rule is not None
-                    or numbering_rule is not None
-                    or name in timestamped
-                )
-                policies[name] = FieldPolicy(
-                    name=name,
-                    type=type_,
-                    hidden_in_reads=name in hidden,
-                    server_generated=server_generated,
-                    categorized_in_reads=name in categorized,
-                    postpayment_only=name in postpayment,
-                    allowed_values=tuple(
-                        self.enumerated_fields.get(entity, {}).get(name, [])
-                    ),
-                    constraints=self.field_constraints.get(entity, {}).get(name, {}),
-                    derived_rule=derived_rule,
-                    aggregate_rule=aggregate_rule,
-                    timestamped=name in timestamped,
-                    numbering_rule=numbering_rule,
-                    upload_rule=upload_rule,
-                )
-            models[entity] = EntityModel(name=entity, fields=policies)
-        return models
-
-    def _build_access_policies(self) -> dict[tuple[str, str], AccessPolicy]:
-        """Consolide les sources de contrôle d'accès par route logique."""
-        policies = {}
-        for (action, _key), route in self._compute_route_map().items():
-            entity = route.base_target
-            reference = f"{entity}.{action}"
-            condition = self.public_conditions.get((entity, "Read")) \
-                if action == "Read" else None
-            policies[(entity, action)] = AccessPolicy(
-                entity=entity,
-                action=action,
-                actors=frozenset(route.actors),
-                public=((entity, action) in self.public_actions or condition is not None),
-                public_condition=condition,
-                owner_entity=self.ownership.get(reference),
-                transitive_ownership=self.transitive_ownership.get(entity),
-                party_fields=tuple(self.access_parties.get(reference, [])),
-                supervisors=frozenset(self.access_supervisors.get(reference, [])),
-            )
-        return policies
 
     def _build_effect_plans(self) -> tuple[EffectPlan, ...]:
         """Réunit les effets validés dans un catalogue commun et ordonné."""
@@ -88,21 +14,21 @@ class ModeleMixin:
         for entity, rules in self.derived_by_entity.items():
             plans.extend(EffectPlan(
                 kind="derive", trigger_entity=entity, target_entity=entity,
-                field=rule["field"], source_entity=rule["source_entity"],
-                source_field=rule["source_field"], config=rule,
+                field=rule.field, source_entity=rule.source_entity,
+                source_field=rule.source_field, config=rule.as_ir(),
             ) for rule in rules)
         for source, rules in self.aggregations_by_source.items():
             plans.extend(EffectPlan(
                 kind="aggregate", trigger_entity=source,
-                target_entity=rule["entity"], field=rule["field"],
-                source_entity=source, source_field=rule["source_field"], config=rule,
+                target_entity=rule.entity, field=rule.field,
+                source_entity=source, source_field=rule.source_field, config=rule.as_ir(),
             ) for rule in rules)
         for trigger, rules in self.reputation_rules_by_trigger.items():
             plans.extend(EffectPlan(
-                kind="increment" if rule["direction"] == "increments" else "decrement",
-                trigger_entity=trigger, target_entity=rule["target_entity"],
-                field=rule["target_field"], source_entity=None,
-                source_field=rule.get("amount_field"), config=rule,
+                kind="increment" if rule.direction == "increments" else "decrement",
+                trigger_entity=trigger, target_entity=rule.target_entity,
+                field=rule.target_field, source_entity=None,
+                source_field=rule.amount_field, config=rule.as_ir(),
             ) for rule in rules)
         for entity, rules in self.release_rules_by_entity.items():
             plans.extend(EffectPlan(
@@ -132,26 +58,9 @@ class ModeleMixin:
                 and (trigger is None or plan.trigger_entity == trigger)
                 and (target is None or plan.target_entity == target)]
 
-    def _compute_fk_placements(self):
-        """CORRECTIF (roadmap) : jusqu'ici, seul le type de relation 'hasMany'
-        produisait réellement une colonne de clé étrangère — 'belongsTo' et
-        'hasOne' étaient acceptés par la grammaire mais totalement ignorés par
-        le générateur (aucune colonne, aucun effet). Cette méthode calcule,
-        pour les 3 types de relation, quelle entité porte la colonne de clé
-        étrangère et vers quelle entité "propriétaire" elle pointe :
-          - hasMany  : "A hasMany B" -> B porte la colonne a_id (A est parent)
-          - hasOne   : idem hasMany, avec en plus une contrainte UNIQUE (1-1)
-          - belongsTo: "A belongsTo B" -> A porte la colonne b_id (B est parent)
-        Retourne : {entité_qui_porte_la_colonne: [{"fk_column", "owner_entity", "unique"}]}
-        """
-        placements = {}
-        for relation in self.relation_models:
-            placements.setdefault(relation.held_entity, []).append({
-                "fk_column": relation.fk_column,
-                "owner_entity": relation.owner_entity,
-                "unique": relation.unique,
-            })
-        return placements
+    def _compute_fk_placements(self) -> dict[str, list[ForeignKeyPlacement]]:
+        """Adaptateur des émetteurs vers l'analyse typée des clés étrangères."""
+        return plan_foreign_keys(self.relation_models)
 
     def _compute_seed_data(self):
         """AJOUT (roadmap frontend, bloc 'seed') : regroupe les données de

@@ -137,7 +137,7 @@ class PaiementRoutesMixin:
                 # (IDOR). Le validateur l'interdit — arriver ici signifie qu'il a
                 # divergé de cette couche. Échouer à la génération vaut mieux
                 # qu'écrire une route de paiement sans contrôle d'accès, même
-                # raisonnement que `_derived_source_fk`.
+                # raisonnement que `plan_derivations`.
                 raise ValueError(
                     f"Génération : '{entite}' est 'payable' mais aucune colonne ne "
                     f"porte l'identifiant du compte propriétaire — la route de "

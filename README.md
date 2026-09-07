@@ -93,16 +93,24 @@ Le parcours complet, interface comprise, est détaillé dans
 | | Framework classique<br><sub>Django, Rails, FastAPI…</sub> | Générateur d'IA<br><sub>v0, Bolt, assistants de code</sub> | **monl-compiler** |
 |---|---|---|---|
 | **Code d'infrastructure** | écrit et maintenu à la main | produit une fois, à reprendre ensuite | **dérivé de la spec, jamais maintenu** |
-| **Deux compilations identiques** | sans objet | résultat différent à chaque fois | **le même backend, à l'octet près** |
+| **Deux compilations identiques** | sans objet | résultat différent à chaque fois | **sources backend identiques à entrée et version de compilateur identiques** |
 | **Contrôle d'accès** | vérifié route par route, à la vigilance | ce que le modèle a compris | **vérifié à la compilation : une collision de privilèges empêche de compiler** |
 | **Cohérence schéma / API / règles** | trois endroits à synchroniser | aucune garantie | **une source unique, propagée à la recompilation** |
-| **Sécurité** | dépend de l'auteur | espérée | **acquise par construction : requêtes paramétrées, rôle issu du compte réel, secret hors du code** |
+| **Sécurité** | dépend de l'auteur | dépend du code produit et de sa revue | **contrôles générés : requêtes paramétrées, rôle issu du compte réel, secret hors du code** |
 | **Rôle de l'IA** | aucun | écrit tout, backend compris | **cantonnée au frontend, encadrée par un contrat et un smoke test** |
 | **Évolution du schéma** | migrations à écrire | à reprendre à la main | **additive et non destructive, données préservées** |
 
 **Ce que vous écrivez :** une spécification d'une page. **Ce que vous
 modifiez, ensuite :** la même page. Le code produit se recompile ; il n'est
 jamais un point de départ à retoucher.
+
+Ces contrôles couvrent les règles prises en charge par le compilateur ; ils
+ne garantissent pas la sécurité globale d'une application. La pertinence des
+permissions déclarées, le code `custom`, le frontend, les dépendances et
+l'exploitation demandent leurs propres vérifications. Les sources générées
+sont déterministes ; les secrets créés pour chaque projet et les données
+d'exécution ne font pas partie de cette identité. Voir le
+[modèle de sécurité](docs/SECURITE.md) et le [guide d'exploitation](docs/EXPLOITATION.md).
 
 ## Architecture
 
@@ -434,15 +442,16 @@ serveur. Toute exception ou tout appel hors contrat bloque le lancement
 
 | | |
 |---|---|
-| **832 tests validés lors du dernier audit** | Validations unitaires et serveurs éphémères pour les parcours HTTP ; le nombre officiel est celui publié par la CI |
-| **Couverture publiée par la CI** | `pytest --cov=src --cov-report=term-missing` |
+| **Tests publiés par la CI** | Validations unitaires et serveurs éphémères pour les parcours HTTP ; consulter l'exécution CI de la révision concernée |
+| **Couverture publiée par la CI** | Compilateur et plateforme mesurés séparément, avec un seuil de 90 % pour chacun |
 | **Audit offensif** | Usurpation de rôle, JWT forgé, élévation de privilège |
-| **Frontières d'architecture** | Six contrats d'import vérifiés par un test, pas par la mémoire |
+| **Frontières d'architecture** | Contrats d'import vérifiés par les tests, notamment l'indépendance de l'analyse vis-à-vis des émetteurs |
 | **Lint** | `ruff check src tests` — zéro signalement, exceptions justifiées dans `pyproject.toml` |
-| **CI** | Python 3.10, 3.12 et 3.14 à chaque push ; `main` protégée par ces vérifications |
+| **CI** | Workflow configuré pour Python 3.10, 3.12 et 3.14 à chaque push et pull request |
 
 ```bash
-python3 -m pytest tests/ -q --cov=src --cov-report=term-missing
+python3 -m pytest tests/ -rs --cov=src/monl --cov-report=term-missing
+python3 -m pytest tests/test_platform_*.py tests/test_oauth.py tests/test_administration.py tests/test_codes_de_secours.py -rs --cov=src/monl_platform --cov-report=term --cov-fail-under=90
 ```
 
 ```bash
@@ -450,7 +459,7 @@ ruff check src tests
 ```
 
 ```bash
-python3 -m mypy src/monl/ir.py src/monl/errors.py src/monl/generator/emitters.py --strict
+python3 -m mypy src/monl/ir.py src/monl/ir_types.py src/monl/planning.py src/monl/policies.py src/monl/errors.py src/monl/generator/emitters.py --strict
 vulture src/monl --min-confidence 90
 ```
 

@@ -156,11 +156,9 @@ class SuppressionRoutesMixin:
         restitutions = []
         for indice, rule in enumerate(
                 self.reputation_rules_by_trigger.get(base_target, [])):
-            fk_cible = self._decrement_fk_column(base_target, rule)
-            if not fk_cible:
-                continue
+            fk_cible = rule.target_fk
             var = f"_rendu_{indice}"
-            champ = rule.get("amount_field")
+            champ = rule.amount_field
             # La quantité et la clé étrangère sont lues AVANT le DELETE :
             # après, la ligne n'existe plus et rien ne dit quoi rendre ni
             # à qui. Même raison qu'au point 82, deux lignes plus haut.
@@ -173,11 +171,11 @@ class SuppressionRoutesMixin:
             restitutions.append({
                 "var": var,
                 # Décompter, c'est retrancher : rendre, c'est ajouter.
-                "op": "+" if rule["direction"] == "decrements" else "-",
-                "table": rule["target_entity"].lower(),
-                "champ": rule["target_field"],
+                "op": "+" if rule.direction == "decrements" else "-",
+                "table": rule.target_entity.lower(),
+                "champ": rule.target_field,
                 "montant": (f"int({var}[0] or 0)" if champ
-                            else str(rule["amount"])),
+                            else str(rule.amount)),
                 "fk_index": 1 if champ else 0,
             })
         upload_refs = []

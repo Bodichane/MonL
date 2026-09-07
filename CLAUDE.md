@@ -688,13 +688,13 @@ réseau social anonyme comme banc d'essai final.
     la route Create n'écrit JAMAIS ne refuse rien — SQLite tient deux NULL pour
     distincts. La colonne visée par un `increments` sort de l'INSERT quand elle
     est la PREMIÈRE relation entrante (`_client_fk_columns` tranche sur
-    `_get_incoming_relation`, pas sur `_decrement_fk_column`) : `oncePer Member,
+    `_get_incoming_relation`, pas sur le plan compteur) : `oncePer Member,
     Post` laissait liker dix fois. Bug d'ORDRE, donc invisible sur la spec qui
     l'a fait naître. La génération REFUSE désormais ce cas en nommant la
     relation à déplacer — refuser plutôt que produire une règle sans effet, mot
     pour mot le point 85. **La cause profonde est FERMÉE au point 117** :
-    `_counter_fk_columns` (generator/core.py) dérive la colonne de
-    `_decrement_fk_column` pour CHAQUE règle, et `_client_fk_columns`,
+    `_counter_fk_columns` (generator/calculs.py) lit le `target_fk` du plan
+    de CHAQUE règle, et `_client_fk_columns`,
     `schemas.py` et `routes.py` la lisent tous les trois — la colonne est
     écrite exactement une fois, jamais zéro. Le refus reste actif, mais
     seulement pour une colonne réellement jamais écrite. Le 409 d'`oncePer` et celui
@@ -1772,10 +1772,21 @@ contourner. Avant de retoucher : le contenu dit-il vraiment ce qu'on veut voir ?
   smoke test doit conserver cette frontière : c'est elle qui empêche un
   client anonyme de s'attribuer un rôle privilégié. Chemin légitime pour les
   autres rôles : le `manage.py` généré.
-- `_compute_route_map` (generator/core.py) : source unique de vérité pour le
+- **L'ANALYSE vit hors des émetteurs** (docs/COMPILER_REFACTOR.md) :
+  `ir_types.py` porte les `TypedDict` sérialisables produits par la validation,
+  `ir.py` les PLANS résolus — `frozen` sauf `RoutePlan`, qui fusionne les
+  acteurs de plusieurs workflows —, `planning.py` les analyses pures
+  (routes, relations, clés étrangères, `derivedFrom`, `sumOf`, compteurs) et
+  `policies.py` les politiques de champs et d'accès. Ces quatre modules ne lisent
+  RIEN du générateur — `tests/test_architecture.py` l'exige pour `planning` et
+  `policies`, et la CI les passe à `mypy --strict`. Un plan est construit une
+  fois puis LU : modifier l'IR d'entrée après coup ne peut plus faire diverger
+  le backend et le contrat, et `tests/test_ir.py` le mesure.
+- `plan_routes` (planning.py) : source unique de vérité pour le
   regroupement des routes, partagée entre la génération FastAPI et le
-  contrat frontend (src/frontend_contract.py) — ne pas dupliquer cette
-  logique ailleurs. Un test (tests/test_orchestrator.py) confronte le
+  contrat frontend (src/frontend_contract.py) via `self.route_plans` —
+  `_compute_route_map` n'en est plus que l'accès compatible. Ne pas dupliquer
+  cette logique ailleurs. Un test (tests/test_orchestrator.py) confronte le
   contrat aux décorateurs réellement écrits dans app.py.
 - Le contrat doit décrire ce que le backend fait VRAIMENT, pas seulement ce que
   la spec déclare — y compris quand une brique RETIRE la possibilité d'écrire
@@ -1962,8 +1973,11 @@ contourner. Avant de retoucher : le contenu dit-il vraiment ce qu'on veut voir ?
   dans `_compute_unique_indexes` (core.py) puis `runtime.py` (index créé au
   démarrage). **Ne jamais réintroduire une règle qui ne produit rien** : c'est
   tout le point 85, et le test qui l'interdit compare la sortie avec et sans.
-- POINT 92 : `_decrement_fk_column` (generator/core.py) est la source UNIQUE de
-  la colonne visée par un `decrements`/`increments`, pour les TROIS branchements.
+- POINT 92 : la colonne visée par un `decrements`/`increments` a une source
+  UNIQUE pour les TROIS branchements — c'est désormais `plan_counters`
+  (planning.py, voir docs/COMPILER_REFACTOR.md), qui la résout une fois et la
+  porte dans `CounterPlan.target_fk` ; les émetteurs la LISENT, ils ne la
+  recalculent plus (avant : `_decrement_fk_column`, generator/calculs.py).
   C'est là qu'a vécu le bug du point 86 (la relation « propriétaire » confondue
   avec la cible du décompte) ; le calcul était recopié à chaque branche, et une
   troisième copie en préparait la troisième occurrence. **Ne jamais lire, dans
@@ -2052,8 +2066,8 @@ contourner. Avant de retoucher : le contenu dit-il vraiment ce qu'on veut voir ?
 - **POINT 154 : `generator/core.py` est réduit à `__init__` + sept mixins, et
   `parser` est un PAQUET.** Les mixins de `generator/` :
   `pipeline` (dont `_compute_route_map`), `modele`, `proprietaire` (dont
-  `_transitive_chain`, `_owner_lookup_sql`, `_identity_fk_columns`), `calculs`
-  (dont `_decrement_fk_column`), `paiement` (dont `_payment_locked_parents`),
+  `_transitive_chain`, `_owner_lookup_sql`, `_identity_fk_columns`), `calculs`,
+  `paiement` (dont `_payment_locked_parents`),
   `sql_colonnes`, `prealables`. Les sources UNIQUES citées plus bas dans ce
   fichier ont donc changé de module, pas de rôle.
   **LE PIÈGE À CONNAÎTRE POUR TOUT DÉCOUPAGE DE TRANSFORMATEUR LARK** :

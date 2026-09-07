@@ -8,10 +8,51 @@ frontière explicite et vérifiable par un analyseur de types.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol, TypedDict
+from typing import Any, Literal, Protocol
 
-EntityFields = dict[str, str]
-RelationKind = Literal["hasMany", "hasOne", "belongsTo"]
+from .ir_types import (
+    ActionIR,
+    ActionKind,
+    AggregatedFieldIR,
+    CategorizedFieldIR,
+    CategoryClauseIR,
+    CategoryLabelIR,
+    CompilationIR,
+    CounterRuleIR,
+    DerivedFieldIR,
+    EntityFields,
+    FieldBoundIR,
+    FieldConstraintsIR,
+    ForeignKeyPlacement,
+    MetaIR,
+    NamedFieldIR,
+    NumberedFieldIR,
+    PostPaymentIR,
+    PublicConditionIR,
+    RelationIR,
+    RelationKind,
+    SandboxIR,
+    SchemaIR,
+    SecurityIR,
+    TransitiveOwnershipIR,
+    UploadFieldIR,
+    WorkflowIR,
+)
+
+__all__ = [
+    "AccessPolicy", "ActionIR", "ActionKind", "AggregatePlan",
+    "AggregatedFieldIR", "AggregationPlans", "CategorizedFieldIR",
+    "CategoryClauseIR", "CategoryLabelIR", "CompilationIR", "CompilationPlans",
+    "CompilationResult", "CounterPlan", "CounterRuleIR", "DerivedFieldIR",
+    "DerivedPlan", "EffectKind", "EffectPlan", "EntityFields", "EntityModel",
+    "FieldBound", "FieldBoundIR", "FieldConstraints", "FieldConstraintsIR",
+    "FieldPolicy", "ForeignKeyPlacement", "MetaIR", "NamedFieldIR",
+    "NumberedFieldIR", "NumberingPlan", "PostPaymentIR", "PublicCondition",
+    "PublicConditionIR", "RelationIR", "RelationKind", "RelationModel",
+    "RoutePlan", "SandboxIR", "SchemaIR", "SecurityIR", "TransitiveOwnership",
+    "TransitiveOwnershipIR", "UploadFieldIR", "UploadPlan", "WorkflowIR",
+]
+
 EffectKind = Literal[
     "derive",
     "aggregate",
@@ -29,75 +70,6 @@ PAYMENT_STATUS_COLUMN = "payment_status"
 PAYMENT_REF_COLUMN = "payment_ref"
 PAYMENT_TRACKING_COLUMNS = (PAYMENT_STATUS_COLUMN, PAYMENT_REF_COLUMN)
 
-
-class MetaIR(TypedDict):
-    appName: str
-    security_audit_logs: list[str]
-
-
-class SchemaIR(TypedDict):
-    entities: dict[str, EntityFields]
-    relations: list[dict[str, Any]]
-
-
-class SecurityIR(TypedDict):
-    actors: list[str]
-    self_register_actors: list[str]
-    rules: list[dict[str, Any]]
-    workflows: list[dict[str, Any]]
-    ownership: dict[str, str]
-    transitive_ownership: dict[str, dict[str, Any]]
-    access_parties: dict[str, list[str]]
-    access_supervisors: dict[str, list[str]]
-    public: list[str]
-    public_conditions: dict[str, dict[str, Any]]
-    once_per: list[dict[str, Any]]
-    hidden_fields: list[str]
-    reputation_rules: list[dict[str, Any]]
-    categorized_fields: list[dict[str, Any]]
-    generated_fields: list[dict[str, Any]]
-    timestamp_fields: list[dict[str, Any]]
-    numbered_fields: list[dict[str, Any]]
-    required_profiles: list[dict[str, Any]]
-    payable_fields: list[dict[str, Any]]
-    writable_after_payment: dict[str, dict[str, Any]]
-    derived_fields: list[dict[str, Any]]
-    aggregated_fields: list[dict[str, Any]]
-    field_constraints: dict[tuple[str, str], dict[str, Any]]
-    auth_identifier: list[str] | None
-    auth_phone_prefix: str | None
-    auth_features: dict[str, Any]
-    # BRIQUE 2a : {'code': 'XOF', 'exponent': 0} ou None. L'exposant est
-    # RESOLU par le validateur, jamais recalcule ici : deux tables de devises
-    # finiraient par diverger, et une divergence d'unite se paie sur le releve
-    # bancaire.
-    payment_currency: dict[str, Any] | None
-    payment_provider: str | None
-    enumerated_fields: dict[str, dict[str, list[str]]]
-    filterable_fields: list[dict[str, Any]]
-    sortable_fields: list[dict[str, Any]]
-    release_rules: list[dict[str, Any]]
-    upload_fields: list[dict[str, Any]]
-    message_rules: list[dict[str, Any]]
-
-
-class SandboxIR(TypedDict):
-    custom_functions: list[dict[str, Any]]
-
-
-class CompilationIR(TypedDict):
-    """Représentation validée, source commune de tous les émetteurs."""
-
-    meta: MetaIR
-    schema: SchemaIR
-    security: SecurityIR
-    sandbox_ai: SandboxIR
-    ui: dict[str, Any]
-    landing: dict[str, Any] | None
-    capabilities: list[str]
-    seeds: list[dict[str, Any]]
-    assets: dict[str, Any]
-    migrations: list[dict[str, Any]]
 
 
 class CompilationGenerator(Protocol):
@@ -117,7 +89,7 @@ class RoutePlan:
     leur format.
     """
 
-    action: str
+    action: ActionKind
     key: str
     target: str
     base_target: str
@@ -131,6 +103,98 @@ class RoutePlan:
 
 
 @dataclass(frozen=True, slots=True)
+class DerivedPlan:
+    """Calcul serveur résolu, partagé par les routes et le contrat frontend."""
+
+    entity: str
+    field: str
+    source_entity: str
+    source_field: str
+    factor: str
+    source_fk: str
+
+    def as_ir(self) -> DerivedFieldIR:
+        """Copie au format historique pour le catalogue générique d'effets."""
+        return {
+            "entity": self.entity, "field": self.field,
+            "source_entity": self.source_entity, "source_field": self.source_field,
+            "factor": self.factor,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AggregatePlan:
+    """Somme résolue ; parent_fk se trouve sur l'entité source enfant."""
+
+    entity: str
+    field: str
+    source_entity: str
+    source_field: str
+    parent_fk: str
+
+    def as_ir(self) -> AggregatedFieldIR:
+        return {
+            "entity": self.entity, "field": self.field,
+            "source_entity": self.source_entity, "source_field": self.source_field,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AggregationPlans:
+    """Deux index d'un même jeu de calculs : cible et événement source."""
+
+    by_entity: Mapping[str, tuple[AggregatePlan, ...]]
+    by_source: Mapping[str, tuple[AggregatePlan, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class CounterPlan:
+    """Effet sur une ligne liée ; la cible et son plancher sont déjà résolus."""
+
+    trigger_entity: str
+    target_entity: str
+    target_field: str
+    amount: int | None
+    amount_field: str | None
+    direction: Literal["increments", "decrements"]
+    target_fk: str
+    minimum: int | None
+
+    def as_ir(self) -> CounterRuleIR:
+        return {
+            "trigger_entity": self.trigger_entity, "target_entity": self.target_entity,
+            "target_field": self.target_field, "amount": self.amount,
+            "amount_field": self.amount_field, "direction": self.direction,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FieldBound:
+    portee: Literal["longueur", "valeur"]
+    valeur: int
+
+
+@dataclass(frozen=True, slots=True)
+class FieldConstraints:
+    required: bool
+    unique: bool
+    minimum: FieldBound | None
+    maximum: FieldBound | None
+
+
+@dataclass(frozen=True, slots=True)
+class NumberingPlan:
+    format: str
+    period: str
+
+
+@dataclass(frozen=True, slots=True)
+class UploadPlan:
+    max_bytes: int
+    accepted_types: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class FieldPolicy:
     """Sémantique consolidée d'un champ après validation."""
 
@@ -141,12 +205,12 @@ class FieldPolicy:
     categorized_in_reads: bool
     postpayment_only: bool
     allowed_values: tuple[str, ...]
-    constraints: Mapping[str, Any]
-    derived_rule: Mapping[str, Any] | None
-    aggregate_rule: Mapping[str, Any] | None
+    constraints: FieldConstraints
+    derived_rule: DerivedPlan | None
+    aggregate_rule: AggregatePlan | None
     timestamped: bool
-    numbering_rule: Mapping[str, Any] | None
-    upload_rule: Mapping[str, Any] | None
+    numbering_rule: NumberingPlan | None
+    upload_rule: UploadPlan | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +247,18 @@ class RelationModel:
 
 
 @dataclass(frozen=True, slots=True)
+class PublicCondition:
+    field: str
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
+class TransitiveOwnership:
+    actor: str
+    chain: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class AccessPolicy:
     """Décision d'accès consolidée pour une action sur une cible."""
 
@@ -190,9 +266,9 @@ class AccessPolicy:
     action: str
     actors: frozenset[str]
     public: bool
-    public_condition: Mapping[str, Any] | None
+    public_condition: PublicCondition | None
     owner_entity: str | None
-    transitive_ownership: Mapping[str, Any] | None
+    transitive_ownership: TransitiveOwnership | None
     party_fields: tuple[str, ...]
     supervisors: frozenset[str]
 
@@ -220,12 +296,12 @@ class CompilationPlans:
     """
 
     route_map: Mapping[tuple[str, str], RoutePlan]
-    foreign_key_placements: Mapping[str, tuple[Mapping[str, Any], ...]]
+    foreign_key_placements: Mapping[str, tuple[ForeignKeyPlacement, ...]]
     identity_foreign_keys: Mapping[str, frozenset[str]]
     client_foreign_keys: Mapping[str, tuple[str, ...]]
     incoming_relations: Mapping[str, Mapping[str, Any] | None]
     payment_locked_parents: Mapping[str, tuple[Mapping[str, Any], ...]]
-    reputation_rules_by_trigger: Mapping[str, tuple[Mapping[str, Any], ...]]
+    reputation_rules_by_trigger: Mapping[str, tuple[CounterPlan, ...]]
     entity_models: Mapping[str, EntityModel]
     access_policies: Mapping[tuple[str, str], AccessPolicy]
     actors: tuple[str, ...]

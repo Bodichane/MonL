@@ -31,18 +31,11 @@ class PaiementMixin:
         pièces détachées reste modifiable, c'est l'encaissement qui fige."""
         verrous = []
         vus = set()
-        placements = self._compute_fk_placements().get(source_entity, [])
-        for plan in self._effects("aggregate", trigger=source_entity):
-            parent = plan.target_entity
+        for plan in self.aggregations_by_source.get(source_entity, ()):
+            parent = plan.entity
             if parent not in self.payable_by_entity or parent in vus:
                 continue
-            fk = next((p["fk_column"] for p in placements
-                       if p["owner_entity"] == parent), None)
-            # Sans colonne, `_aggregation_recomputes` lève déjà à la génération :
-            # inutile de doubler l'erreur, mais hors de question de verrouiller
-            # sur une clé devinée.
-            if not fk:
-                continue
+            fk = plan.parent_fk
             vus.add(parent)
             verrous.append({"fk_column": fk, "entity": parent,
                             "table": parent.lower()})

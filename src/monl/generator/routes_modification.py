@@ -125,12 +125,11 @@ class ModificationRoutesMixin:
         # RECALCULÉ ici. Le laisser tel quel déplacerait simplement la
         # faille : créer à quantité 1 puis modifier à quantité 5 sans
         # recalcul donnerait cinq articles au prix d'un.
-        derives_upd = self.derived_by_entity.get(base_target, [])
-        noms_derives = {r["field"] for r in derives_upd}
+        derives_upd = self.derived_by_entity.get(base_target, ())
+        noms_derives = {r.field for r in derives_upd}
         for regle in derives_upd:
-            fk_col = self._derived_source_fk(base_target,
-                                             regle["source_entity"])
-            champ = regle["field"]
+            fk_col = regle.source_fk
+            champ = regle.field
             api_lines += [
                 # La ligne liée est celle STOCKÉE, relue en base — jamais
                 # celle que le corps de requête déclare. Les deux sens ont
@@ -146,21 +145,21 @@ class ModificationRoutesMixin:
                 f"    if not _lien_{champ}:",
                 "        conn.close()",
                 "        raise HTTPException(status_code=404, detail='Enregistrement introuvable')",
-                f"    cursor.execute('SELECT \"{regle['source_field']}\" FROM "
-                f'"{regle["source_entity"].lower()}" WHERE id = ?\', '
+                f"    cursor.execute('SELECT \"{regle.source_field}\" FROM "
+                f'"{regle.source_entity.lower()}" WHERE id = ?\', '
                 f"(_lien_{champ}[0],))",
                 f"    _src_{champ} = cursor.fetchone()",
                 f"    if not _src_{champ}:",
                 "        conn.close()",
                 "        raise HTTPException(status_code=409, detail=(",
-                f"            '{regle['source_entity']} introuvable : impossible de recalculer "
+                f"            '{regle.source_entity} introuvable : impossible de recalculer "
                 f"{champ}.'))",
-                f"    if data.{regle['factor']} <= 0:",
+                f"    if data.{regle.factor} <= 0:",
                 "        conn.close()",
                 "        raise HTTPException(status_code=400, detail=(",
                 "            'La quantité doit être strictement positive.'))",
                 f"    _calcul_{champ} = round(float(_src_{champ}[0] or 0) "
-                f"* int(data.{regle['factor']}), 2)",
+                f"* int(data.{regle.factor}), 2)",
             ]
         # AJOUT (brique 12, point 82) : un champ 'sumOf' n'est pas dans
         # `data` et n'a rien à faire dans le SET — le réécrire depuis la
@@ -240,13 +239,11 @@ class ModificationRoutesMixin:
             ]
             lignes_ecriture.append("if _bascule:")
             for decompte in self.reputation_rules_by_trigger.get(enfant, []):
-                if decompte["direction"] != "decrements":
+                if decompte.direction != "decrements":
                     continue
-                fk_cible = self._decrement_fk_column(enfant, decompte)
-                if not fk_cible:
-                    continue
-                champ = decompte.get("amount_field")
-                quantite = "_l[1]" if champ else str(decompte["amount"])
+                fk_cible = decompte.target_fk
+                champ = decompte.amount_field
+                quantite = "_l[1]" if champ else str(decompte.amount)
                 colonnes = (f'"{fk_cible}", "{champ}"' if champ
                             else f'"{fk_cible}"')
                 lignes_ecriture += [
@@ -256,8 +253,8 @@ class ModificationRoutesMixin:
                     # Aucun plancher : on rend un état qui a existé et
                     # qui était valide (même raison qu'au point 92).
                     f"        cursor.execute('UPDATE "
-                    f'"{decompte["target_entity"].lower()}" SET '
-                    f'"{decompte["target_field"]}" = "{decompte["target_field"]}" '
+                    f'"{decompte.target_entity.lower()}" SET '
+                    f'"{decompte.target_field}" = "{decompte.target_field}" '
                     f"+ ? WHERE id = ?', (int({quantite} or 0), _l[0]))",
                 ]
         # BRIQUE 19 (point 91) : le décompte suit la quantité MODIFIÉE.
@@ -283,18 +280,15 @@ class ModificationRoutesMixin:
         # qui lit la variable d'une autre marche tant que l'ordre des
         # routes les met côte à côte.
         for rule in self.reputation_rules_by_trigger.get(base_target, []):
-            if not rule.get("amount_field"):
+            if not rule.amount_field:
                 continue  # décompte d'une constante : rien ne varie
-            plancher = (self.field_constraints.get(rule["target_entity"], {})
-                        .get(rule["target_field"], {}).get("min"))
-            if plancher is None or rule["direction"] != "decrements":
+            plancher = rule.minimum
+            if plancher is None or rule.direction != "decrements":
                 continue  # sans plancher déclaré, rien à garantir (point 86)
-            fk_cible = self._decrement_fk_column(base_target, rule)
-            if not fk_cible:
-                continue
-            champ = rule["amount_field"]
-            cible = rule["target_entity"].lower()
-            vise = rule["target_field"]
+            fk_cible = rule.target_fk
+            champ = rule.amount_field
+            cible = rule.target_entity.lower()
+            vise = rule.target_field
             lignes_ecriture += [
                 f"cursor.execute('SELECT \"{champ}\", \"{fk_cible}\" FROM "
                 f'"{base_target.lower()}" WHERE id = ?\', (id,))',
@@ -305,11 +299,11 @@ class ModificationRoutesMixin:
                 f"        cursor.execute('UPDATE \"{cible}\" SET \"{vise}\" = "
                 f'"{vise}" - ? WHERE id = ? AND "{vise}" - ? >= ?\', '
                 "(_delta, _avant[1], _delta, "
-                f"{plancher['valeur']}))",
+                f"{plancher}))",
                 "        if cursor.rowcount == 0:",
                 "            conn.rollback(); conn.close()",
                 "            raise HTTPException(status_code=409, detail=(",
-                f"                '{rule['target_entity']}.{vise} insuffisant : "
+                f"                '{rule.target_entity}.{vise} insuffisant : "
                 f"la quantité demandée dépasse ce qui reste disponible.'))",
             ]
         if ecrits:

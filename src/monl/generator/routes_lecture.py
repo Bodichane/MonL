@@ -74,8 +74,8 @@ class LectureRoutesMixin:
             condition_supervisors or condition_owner_columns)
         if public_condition:
             condition_fragment = sql.cat(
-                sql.ident(public_condition["field"]), sql.kw(" = "),
-                sql.bind(repr(public_condition["value"])))
+                sql.ident(public_condition.field), sql.kw(" = "),
+                sql.bind(repr(public_condition.value)))
         # AJOUT (roadmap, brique "accès à deux parties") : si une
         # règle 'accessibleBy' cible Read, la liste ne renvoie que
         # les enregistrements dont l'appelant est l'une des parties
@@ -230,8 +230,8 @@ class LectureRoutesMixin:
             # ouvrir. 404 et jamais 403 pour les autres : sur des identifiants
             # séquentiels, distinguer « n'existe pas » de « masqué » laisserait
             # dénombrer ce qui a été retiré.
-            garde = (f"    if named_row.get({public_condition['field']!r}) != "
-                     f"{public_condition['value']!r}")
+            garde = (f"    if named_row.get({public_condition.field!r}) != "
+                     f"{public_condition.value!r}")
             if apply_condition_identity:
                 exemptions = []
                 if condition_supervisors:

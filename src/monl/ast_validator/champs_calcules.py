@@ -5,6 +5,7 @@ les compteurs `increments`/`decrements` et l'unicité composite `oncePer`.
 Un montant que le client peut écrire est un montant qu'il fixe lui-même :
 c'est la raison d'être de la moitié des refus rassemblés ici."""
 
+from ..ir import AggregatedFieldIR, CounterRuleIR, DerivedFieldIR
 from .socle import ASTValidationError
 
 
@@ -13,7 +14,7 @@ class ChampsCalculesMixin:
 
     def _valider_champs_derives(self):
         """Valide les champs numériques calculés depuis une ligne liée."""
-        self.derived_fields = []
+        self.derived_fields: list[DerivedFieldIR] = []
         for rule in self.rules:
             if rule["type"] != "derivedFrom":
                 continue
@@ -104,7 +105,7 @@ class ChampsCalculesMixin:
 
     def _valider_champs_agreges(self):
         """Valide les champs calculés par somme des lignes enfants."""
-        self.aggregated_fields = []
+        self.aggregated_fields: list[AggregatedFieldIR] = []
         for rule in self.rules:
             if rule["type"] != "sumOf":
                 continue
@@ -187,7 +188,7 @@ class ChampsCalculesMixin:
 
     def _valider_effets_compteurs(self):
         """Valide les effets de compteur déclenchés à la création."""
-        self.reputation_rules = []
+        self.reputation_rules: list[CounterRuleIR] = []
         for rule in self.rules:
             if rule["type"] not in ("decrements", "increments"):
                 continue

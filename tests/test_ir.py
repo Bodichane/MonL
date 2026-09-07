@@ -1,6 +1,7 @@
 """Tests unitaires de la représentation intermédiaire typée."""
 
 from monl.ast_validator import MonlAST
+from monl.frontend_contract.assemblage import build_contract
 from monl.generator import MonlSecureGenerator
 from monl.ir import AccessPolicy, EffectPlan, RelationModel, RoutePlan
 from monl.parser import parse_monl_string
@@ -83,7 +84,7 @@ workflow Ecrire for Auteur
     note = generator.entity_models["Note"]
 
     assert note.name == "Note"
-    assert note.fields["titre"].constraints["unique"] is True
+    assert note.fields["titre"].constraints.unique is True
     assert note.fields["statut"].allowed_values == ("brouillon", "publiée")
     assert note.fields["auteur"].server_generated
     assert note.fields["interne"].hidden_in_reads
@@ -215,3 +216,34 @@ workflow Acheter for Client
     assert aggregate.source_field == "sousTotal"
     assert generator._derived_field_names("Ligne") == ["sousTotal"]
     assert generator._aggregated_field_names("Commande") == ["total"]
+
+    # Le backend et le contrat partagent le même plan de dérivation résolu.
+    derived = generator.derived_by_entity["Ligne"][0]
+    assert derived.source_fk == "produit_id"
+    assert generator.compilation_plans.entity_models["Ligne"].fields[
+        "sousTotal"].derived_rule is derived
+    sources = generator.emitters.render()
+    contract = build_contract(ir, generator.compilation_plans)
+    subtotal = next(field for field in contract["entities"]["Ligne"]["fields"]
+                    if field["name"] == "sousTotal")
+    assert subtotal["derived_from"] == "Produit.prix"
+    assert subtotal["derived_factor"] == "quantite"
+    aggregation = generator.aggregated_by_entity["Commande"][0]
+    assert generator.aggregations_by_source["Ligne"][0] is aggregation
+    assert generator.compilation_plans.entity_models["Commande"].fields[
+        "total"].aggregate_rule is aggregation
+    total = next(field for field in contract["entities"]["Commande"]["fields"]
+                 if field["name"] == "total")
+    assert total["summed_from"] == "Ligne.sousTotal"
+    counter = generator.reputation_rules_by_trigger["Ligne"][0]
+    assert generator.compilation_plans.reputation_rules_by_trigger["Ligne"][0] is counter
+    assert counter.target_fk == "produit_id"
+
+    # L'analyse est un instantané : modifier la règle brute après construction
+    # ne peut pas faire dériver les deux émetteurs ni changer le calcul publié.
+    ir["security"]["derived_fields"][0]["source_field"] = "autrePrix"
+    ir["security"]["derived_fields"][0]["factor"] = "autreQuantite"
+    ir["security"]["aggregated_fields"][0]["source_field"] = "autreSomme"
+    ir["security"]["reputation_rules"][0]["amount_field"] = "autreQuantite"
+    assert generator.emitters.render() == sources
+    assert build_contract(ir, generator.compilation_plans) == contract
