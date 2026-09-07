@@ -15,7 +15,7 @@ class ProprietaireMixin:
     def _fk_to(self, child, parent):
         """Colonne de clé étrangère sur 'child' qui désigne 'parent'.
 
-        Même convention et même garde que _derived_source_fk : si la colonne
+        Même convention et même garde que plan_derivations : si la colonne
         manque, la validation et le placement des clés étrangères ont divergé —
         et écrire une jointure sur None rendrait tout visible à tous."""
         for p in self._compute_fk_placements().get(child, []):
@@ -217,7 +217,7 @@ class ProprietaireMixin:
             return []
         exclues = set(self._identity_fk_columns().get(entity, set()))
         # POINT 92 : la colonne d'une cible de compteur est celle que
-        # `_decrement_fk_column` trouve pour CHAQUE règle, pas celle de la
+        # le plan compteur désigne pour CHAQUE règle, pas celle de la
         # première relation entrante. Avec deux relations (Post et Member),
         # `_get_incoming_relation` peut désigner Post alors que l'identité
         # peuple member_id ; l'ancienne décision excluait alors post_id de
@@ -273,7 +273,7 @@ class ProprietaireMixin:
                 # intermédiaire, pas un id de compte -- elle référence donc la
                 # vraie table métier, et non '_monl_users'.
                 continue
-            cibles_compteur = {r["target_entity"]
+            cibles_compteur = {r.target_entity
                                for r in self.reputation_rules_by_trigger.get(entity, [])}
             candidats = [p for p in self._compute_fk_placements().get(entity, [])
                          if p["owner_entity"] in self.actors

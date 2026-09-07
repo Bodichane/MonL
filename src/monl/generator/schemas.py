@@ -137,7 +137,7 @@ class SchemasMixin:
             # 'decrements'/'increments' est un choix du client ("je
             # signale/j'apprécie CETTE cible précise"), quelle que soit sa
             # position parmi les relations entrantes. La source unique de la
-            # colonne est `_decrement_fk_column` via `_counter_fk_columns`.
+            # colonne vient du plan compteur via `_counter_fk_columns`.
             for _counter_fk in self._counter_fk_columns(ent_name):
                 api_lines.append(f"    {_counter_fk}: int")
                 has_schema_field = True

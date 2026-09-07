@@ -62,7 +62,7 @@ def _client_supplied_fks(plans: CompilationPlans, entity):
     colonnes = []
     owner = plans.incoming_relations.get(entity)
     owners = {
-        r["target_entity"] for r in plans.reputation_rules_by_trigger.get(entity, ())
+        r.target_entity for r in plans.reputation_rules_by_trigger.get(entity, ())
     }
     if owner and owner["source"] in owners:
         colonnes.append(owner["fk_column"])

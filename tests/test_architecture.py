@@ -136,6 +136,11 @@ def _depend_de(module):
 # ---- Les contrats ---------------------------------------------------
 # (source, interdits, pourquoi) — le « pourquoi » s'affiche à l'échec.
 INTERDITS = [
+    ("policies", [module for module in MODULES if module not in ("policies", "ir")],
+     "les politiques de champs et d'accès dépendent seulement de l'IR"),
+    ("planning", [module for module in MODULES if module not in ("planning", "ir")],
+     "l'analyse des routes et relations dépend seulement de l'IR, "
+     "jamais du générateur ni de ses consommateurs"),
     ("parser", ["cli", "dialogue_engine", "frontend_ai", "tui", "app_templates",
                 "smoke_test", "frontend_contract", "ast_validator", "generator"],
      "le parseur est la première couche : il ne connaît rien d'autre"),
@@ -432,16 +437,16 @@ EXCEPTIONS_DE_COMPLEXITE = {
     "monl/frontend_contract/contrat_entites.py:_specs_des_entites": (25, "Assemblage de contrat hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),
     "monl/frontend_contract/contrat_routes.py:_routes_du_contrat": (21, "Assemblage de routes hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),
     "monl/frontend_contract/roles_de_champs.py:_assign_field_roles": (39, "Attribution de rôles hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),
-    "monl/generator/core.py:__init__": (24, "Initialisation déclarative du générateur conservée telle quelle ; fonction hors des cinq cibles."),
-    "monl/generator/pipeline.py:build_compilation_plans": (21, "Assemblage de plans de compilation hors des cinq cibles ; dette cliquetée."),
+    "monl/generator/core.py:__init__": (20, "Initialisation du générateur ; analyse des relations, routes et champs calculés extraite dans planning, dette restante cliquetée."),
+    "monl/generator/pipeline.py:build_compilation_plans": (19, "Assemblage de plans de compilation hors des cinq cibles ; dette cliquetée."),
     "monl/generator/proprietaire.py:_identity_fk_columns": (16, "Déduction de colonnes hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),
-    "monl/generator/routes_creation.py:_generate_create_route_lines": (43, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
+    "monl/generator/routes_creation.py:_generate_create_route_lines": (41, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_lecture.py:_generate_read_route_lines": (49, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_lecture_filtree.py:_generate_read_route_lines_with_query": (51, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
-    "monl/generator/routes_modification.py:_generate_update_route_lines": (42, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
+    "monl/generator/routes_modification.py:_generate_update_route_lines": (40, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_paiement.py:_generate_payment_routes": (17, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_prestataires.py:_generate_postpayment_routes": (19, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
-    "monl/generator/routes_suppression.py:_generate_delete_route_lines": (28, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
+    "monl/generator/routes_suppression.py:_generate_delete_route_lines": (27, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/runtime_connexion.py:_socle_authentification": (16, "Émission de socle ligne par ligne : liste plate légitime, hors des cinq cibles."),
     "monl/generator/schemas.py:_generate_schema_lines": (34, "Émission de schéma ligne par ligne : liste plate légitime, hors des cinq cibles."),
     "monl/image_ai.py:call": (19, "Appel de service hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),

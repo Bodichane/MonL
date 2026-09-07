@@ -37,8 +37,8 @@ class LectureFiltreeRoutesMixin:
             condition_supervisors or condition_owner_columns)
         if public_condition:
             condition_fragment = sql.cat(
-                sql.ident(public_condition["field"]), sql.kw(" = "),
-                sql.bind(repr(public_condition["value"])))
+                sql.ident(public_condition.field), sql.kw(" = "),
+                sql.bind(repr(public_condition.value)))
 
         read_parties = access.party_fields
         apply_read_parties = bool(read_parties) and not is_public
@@ -237,8 +237,8 @@ class LectureFiltreeRoutesMixin:
             "    named_row = dict(zip(_columns, row))",
         ]
         if public_condition:
-            guard = (f"    if named_row.get({public_condition['field']!r}) != "
-                     f"{public_condition['value']!r}")
+            guard = (f"    if named_row.get({public_condition.field!r}) != "
+                     f"{public_condition.value!r}")
             if apply_condition_identity:
                 exemptions = []
                 if condition_supervisors:

@@ -22,6 +22,7 @@ déclare maintenant : ces tests vérifient donc aussi que les fichiers du dossie
 `exemples/assets/` sont RÉELLEMENT là. Retirer `base_dir` rendrait ces
 compilations muettes sur la moitié de ce qu'elles éprouvent.
 """
+import ast
 import glob
 import os
 import tempfile
@@ -54,6 +55,15 @@ def test_example_compiles(yaml_path):
         for artefact in ("app.py", "schema.sql"):
             artefact_path = os.path.join(sortie, artefact)
             assert os.path.exists(artefact_path), f"{artefact} n'a pas été généré pour {os.path.basename(yaml_path)}"
+        # Une présence sur disque ne prouve pas qu'un émetteur a produit un
+        # module importable. Parser chaque source générée attrape immédiatement
+        # une quote ou une indentation cassée, sans exécuter le code produit ni
+        # dépendre d'un service externe.
+        for module in ("app.py", "manage.py", "sandbox_ai.py"):
+            module_path = os.path.join(sortie, module)
+            if os.path.exists(module_path):
+                with open(module_path, encoding="utf-8") as generated:
+                    ast.parse(generated.read(), filename=module)
         # `sandbox_ai.py` n'est plus livré à un projet SANS bloc `custom` :
         # il ne contenait qu'un commentaire, `app.py` l'importait sans jamais
         # l'appeler, et le supprimer faisait échouer le démarrage. Aucun des

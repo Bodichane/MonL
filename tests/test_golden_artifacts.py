@@ -200,6 +200,23 @@ def test_une_recompilation_garde_les_artefacts_deterministes(tmp_path, capsys):
     _aucun_module_custom_inutile(tmp_path)
 
 
+def test_deux_repertoires_produisent_les_memes_sources(tmp_path, capsys):
+    """Le chemin de sortie et le secret local ne doivent pas contaminer les sources."""
+    spec = tmp_path / "spec.ml"
+    spec.write_text(SPEC, encoding="utf-8")
+    premier, second = tmp_path / "premier", tmp_path / "second"
+    premier.mkdir()
+    second.mkdir()
+
+    compile_project(str(spec), str(premier))
+    capsys.readouterr()
+    compile_project(str(spec), str(second))
+    capsys.readouterr()
+
+    for name in GOLDENS:
+        assert (premier / name).read_bytes() == (second / name).read_bytes(), name
+
+
 def test_les_sources_de_filtrage_du_point_181_sont_dans_le_golden(
         tmp_path, capsys):
     """Le golden backend exerce les deux familles de filtres ajoutées."""

@@ -80,8 +80,8 @@ def _specs_des_entites(entities, fk_placements, lisibles, plans):
                 # ajoutées plus bas ; l'IA frontend n'a rien à deviner.
                 champ["upload"] = {
                     "field_name": fname,
-                    "max_bytes": policy.upload_rule["max_bytes"],
-                    "accepted_types": list(policy.upload_rule["accepted_types"]),
+                    "max_bytes": policy.upload_rule.max_bytes,
+                    "accepted_types": list(policy.upload_rule.accepted_types),
                     "storage": "server_disk_reference",
                     "note": ("octets reçus à l'exécution ; le nom de fichier et le "
                              "Content-Type client sont ignorés, le type est établi "
@@ -102,34 +102,34 @@ def _specs_des_entites(entities, fk_placements, lisibles, plans):
             # alors qu'elle pouvait le dire tout de suite. Même raison que pour
             # `server_generated` (point 79) — le contrat décrit ce que le backend
             # fait VRAIMENT, y compris ce qu'il REFUSE.
-            for nom in ("min", "max"):
-                borne = policy.constraints.get(nom)
+            for nom, borne in (("min", policy.constraints.minimum),
+                               ("max", policy.constraints.maximum)):
                 if borne:
-                    champ[f"{nom}_{'length' if borne['portee'] == 'longueur' else 'value'}"] = \
-                        borne["valeur"]
-            if policy.constraints.get("unique"):
+                    champ[f"{nom}_{'length' if borne.portee == 'longueur' else 'value'}"] = \
+                        borne.valeur
+            if policy.constraints.unique:
                 champ["unique"] = True
                 champ["unique_note"] = ("valeur unique imposée par la base : une "
                                         "création ou une modification en doublon "
                                         "répond 409, pas 422 — le dire à l'utilisateur "
                                         "plutôt que de rejouer la requête.")
             if derive:
-                champ["derived_from"] = (f"{derive['source_entity']}."
-                                         f"{derive['source_field']}")
-                champ["derived_factor"] = derive["factor"]
+                champ["derived_from"] = (f"{derive.source_entity}."
+                                         f"{derive.source_field}")
+                champ["derived_factor"] = derive.factor
                 champ["note"] = (
-                    f"calculé par le serveur : {derive['source_entity']}."
-                    f"{derive['source_field']} × {derive['factor']}. Ne pas "
+                    f"calculé par le serveur : {derive.source_entity}."
+                    f"{derive.source_field} × {derive.factor}. Ne pas "
                     f"l'envoyer, et ne pas le calculer côté navigateur pour "
                     f"l'afficher avant création — relire la valeur renvoyée par "
                     f"le serveur, c'est elle qui sera encaissée.")
             if somme:
-                champ["summed_from"] = (f"{somme['source_entity']}."
-                                        f"{somme['source_field']}")
+                champ["summed_from"] = (f"{somme.source_entity}."
+                                        f"{somme.source_field}")
                 champ["note"] = (
                     f"total recalculé par le serveur : somme des "
-                    f"{somme['source_entity']}.{somme['source_field']} rattachés. "
-                    f"Ne pas l'envoyer. Il change à chaque {somme['source_entity']} "
+                    f"{somme.source_entity}.{somme.source_field} rattachés. "
+                    f"Ne pas l'envoyer. Il change à chaque {somme.source_entity} "
                     f"ajouté, modifié ou supprimé : relire le "
                     f"{ent} après chaque écriture de ligne plutôt que de tenir un "
                     f"total côté navigateur, qui divergerait.")
@@ -145,17 +145,17 @@ def _specs_des_entites(entities, fk_placements, lisibles, plans):
                     "de la règle : afficher un tiret, jamais la date du jour — "
                     "cette date-là n'a pas été perdue, elle n'a jamais existé.")
             if numero:
-                champ["numbered_as"] = numero["format"]
+                champ["numbered_as"] = numero.format
                 champ["note"] = (
                     f"numéro lisible attribué par le serveur à la création, sur le "
-                    f"gabarit « {numero['format']} », et jamais modifié ensuite. "
+                    f"gabarit « {numero.format} », et jamais modifié ensuite. "
                     f"Ne pas l'envoyer : ni à la création, ni à la modification. "
                     f"C'est la référence que l'humain lit et dicte — l'AFFICHER "
                     f"partout où l'enregistrement est identifié (liste, détail, "
                     f"accusé de commande), de préférence avant l'`id` technique, "
                     f"et la rendre copiable. "
                     + ("Il se trie comme du texte, la partie séquence étant "
-                       "complétée par des zéros. " if "{N" in numero["format"] else "")
+                       "complétée par des zéros. " if "{N" in numero.format else "")
                     + "PEUT ÊTRE VIDE sur les enregistrements créés avant l'ajout "
                       "de la règle : afficher un tiret, jamais un numéro inventé.")
             field_list.append(champ)

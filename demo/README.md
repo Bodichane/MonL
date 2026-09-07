@@ -21,16 +21,25 @@ contrat livré datait d'avant trois évolutions du compilateur.
 ## Le refaire tourner
 
 ```bash
-monl compile demo/spec.ml --output /tmp/codexshop
+projet_demo="$(mktemp -d /tmp/codexshop-XXXXXX)"
+cp demo/spec.ml "$projet_demo/"
+cp -r demo/frontend demo/assets "$projet_demo/"
+monl compile "$projet_demo/spec.ml" --output "$projet_demo"
 ```
 
 ```bash
-cp -r demo/frontend demo/assets /tmp/codexshop/
+monl run "$projet_demo" --check
 ```
 
 ```bash
-monl run /tmp/codexshop
+monl run "$projet_demo"
 ```
+
+La copie possède sa propre spécification : vous pouvez la faire évoluer sans
+modifier celle du dépôt. Le [parcours de référence](../docs/DEMO.md) détaille
+une commande, la mise à jour du schéma et les observations à relever lors d'un
+premier essai utilisateur. Le dossier temporaire doit être déplacé vers votre
+espace de projets si vous souhaitez le conserver durablement.
 
 Les photos sont servies parce que `serve.py` monte `assets/` sur
 `/site/assets` dès que le dossier existe — le frontend les référence en chemin
@@ -48,6 +57,12 @@ Un second test vérifie que le frontend reste AUTONOME : extensions dans la
 liste blanche (`.html`, `.css`, `.js`, `.svg`, `.json`), aucun script distant,
 aucun CDN. Les photos échappent à cette liste parce qu'elles vivent hors de
 `frontend/` — c'est tout l'objet de la brique 13.
+
+`tests/test_demo_cycle.py` exerce aussi la vraie spec en HTTP : compte, fiche,
+commande à 48 €, stock, séparation des clients, puis `monl update` avec ajout
+d'une note. Il vérifie la conservation des données, du jeton et du frontend,
+ainsi que la restitution unique du stock à l'annulation. Le paiement externe
+et l'adaptation du formulaire après ajout de la note restent hors de ce test.
 
 ## Ce qu'elle montre du langage
 

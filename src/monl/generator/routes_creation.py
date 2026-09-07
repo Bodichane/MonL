@@ -149,29 +149,28 @@ class CreationRoutesMixin:
         # lisant le prix sur la ligne liée que le client a désignée. Le
         # 409 vaut mieux qu'un montant faux : une référence bidon doit
         # arrêter la commande, pas la créer à zéro euro.
-        derives_ici = self.derived_by_entity.get(base_target, [])
+        derives_ici = self.derived_by_entity.get(base_target, ())
         for regle in derives_ici:
-            fk_col = self._derived_source_fk(base_target,
-                                             regle["source_entity"])
-            var = f"_calcul_{regle['field']}"
+            fk_col = regle.source_fk
+            var = f"_calcul_{regle.field}"
             api_lines += [
-                f"    cursor.execute('SELECT \"{regle['source_field']}\" FROM "
-                f'"{regle["source_entity"].lower()}" WHERE id = ?\', '
+                f"    cursor.execute('SELECT \"{regle.source_field}\" FROM "
+                f'"{regle.source_entity.lower()}" WHERE id = ?\', '
                 f"(data.{fk_col},))",
-                f"    _src_{regle['field']} = cursor.fetchone()",
-                f"    if not _src_{regle['field']}:",
+                f"    _src_{regle.field} = cursor.fetchone()",
+                f"    if not _src_{regle.field}:",
                 "        conn.close()",
                 "        raise HTTPException(status_code=409, detail=(",
-                f"            '{regle['source_entity']} introuvable : impossible de calculer "
-                f"{regle['field']}.'))",
-                f"    if data.{regle['factor']} <= 0:",
+                f"            '{regle.source_entity} introuvable : impossible de calculer "
+                f"{regle.field}.'))",
+                f"    if data.{regle.factor} <= 0:",
                 "        conn.close()",
                 "        raise HTTPException(status_code=400, detail=(",
                 "            'La quantité doit être strictement positive.'))",
-                f"    {var} = round(float(_src_{regle['field']}[0] or 0) "
-                f"* int(data.{regle['factor']}), 2)",
+                f"    {var} = round(float(_src_{regle.field}[0] or 0) "
+                f"* int(data.{regle.factor}), 2)",
             ]
-        calcules = {r["field"]: f"_calcul_{r['field']}" for r in derives_ici}
+        calcules = {r.field: f"_calcul_{r.field}" for r in derives_ici}
         # AJOUT (brique 12, point 82) : une commande naît sans ligne, donc
         # son total naît à 0 — jamais à NULL, qu'aucun frontend ne sait
         # afficher, et jamais depuis `data` (le champ n'y est plus). La
@@ -262,9 +261,9 @@ class CreationRoutesMixin:
             api_lines.append(
                 f"        cursor.execute({recalcul['sql']!r}, ({parent}, {parent}))")
         for rule in reputation_rules_here:
-            target_table = rule["target_entity"].lower()
-            target_field = rule["target_field"]
-            sql_op = "-" if rule["direction"] == "decrements" else "+"
+            target_table = rule.target_entity.lower()
+            target_field = rule.target_field
+            sql_op = "-" if rule.direction == "decrements" else "+"
             # CORRECTIF (point 86) : la colonne visée est celle qui pointe
             # vers l'entité DÉCRÉMENTÉE, pas la relation « propriétaire ».
             # Tant qu'une entité déclenchante n'avait qu'UNE relation
@@ -275,16 +274,12 @@ class CreationRoutesMixin:
             # a déjà connu ce défaut (« un mécanisme de clé étrangère qui
             # décrémentait le mauvais enregistrement ») : il est revenu
             # par la porte de la deuxième relation.
-            fk_vers_cible = self._decrement_fk_column(base_target, rule)
-            if not fk_vers_cible:
-                raise ValueError(
-                    f"Génération : aucune clé étrangère de '{base_target}' ne désigne "
-                    f"'{rule['target_entity']}', alors que l'effet compteur l'exige.")
+            fk_vers_cible = rule.target_fk
             fk_value_expr = f"data.{fk_vers_cible}"
             # BRIQUE 14 (point 86) : la quantité est soit une constante,
             # soit un champ du corps de requête ('by quantity').
-            quantite = (f"data.{rule['amount_field']}" if rule.get("amount_field")
-                        else str(rule["amount"]))
+            quantite = (f"data.{rule.amount_field}" if rule.amount_field
+                        else str(rule.amount))
             # LE cœur de la brique. Un décompte qui peut passer sous son
             # plancher est un stock qui MENT : la boutique afficherait
             # -3 paires disponibles, et aurait encaissé les huit qu'elle
@@ -292,10 +287,8 @@ class CreationRoutesMixin:
             # câblée en dur — il vient de la DÉCLARATION 'min' du
             # point 85 sur le champ visé. Une réputation sans 'min'
             # continue de passer sous zéro, ce qui est son droit.
-            plancher = (self.field_constraints.get(rule["target_entity"], {})
-                        .get(target_field, {}).get("min"))
-            borne = plancher["valeur"] if plancher else None
-            if borne is not None and rule["direction"] == "decrements":
+            borne = rule.minimum
+            if borne is not None and rule.direction == "decrements":
                 # UNE seule instruction : la condition et l'écriture sont
                 # évaluées ensemble, donc deux commandes simultanées ne
                 # peuvent pas lire le même stock et le décompter deux fois.
@@ -312,7 +305,7 @@ class CreationRoutesMixin:
                 api_lines += [
                     "        if cursor.rowcount == 0:",
                     "            raise HTTPException(status_code=409, detail=(",
-                    f"                '{rule['target_entity']}.{target_field} insuffisant : "
+                    f"                '{rule.target_entity}.{target_field} insuffisant : "
                     f"la quantité demandée dépasse ce qui reste disponible.'))",
                 ]
             else:

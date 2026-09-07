@@ -1,110 +1,50 @@
-"""Ce que le serveur CALCULE : dérivation, somme, compteurs.
+"""Rendu des calculs à partir des plans métier résolus.
 
-POINT 92 : `_decrement_fk_column` est la source UNIQUE de la colonne visée
-par un `decrements`/`increments`, pour les TROIS branchements (création,
-modification, suppression). Le calcul recopié à chaque branche est
-exactement là qu'a vécu le bug du point 86."""
-
-
-
+Les clés des dérivations, agrégations et compteurs sont déterminées par
+`planning`. Les émetteurs de création, modification et suppression lisent
+les mêmes plans pour conserver la cible de chaque effet."""
 
 class CalculsMixin:
     """Ce que le serveur CALCULE : dérivation, somme, compteurs."""
 
-    def _derived_field_names(self, entity):
+    def _derived_field_names(self, entity: str) -> list[str]:
         """Champs de 'entity' calculés par le serveur (brique 10, point 77).
 
         Ils doivent être traités comme les champs 'generated' partout où le
         client pourrait les fournir : absents du schéma Pydantic, et exclus des
         valeurs d'écriture qu'on lit dans `data`."""
-        return [plan.field for plan in self._effects("derive", target=entity)]
+        return [plan.field for plan in self.derived_by_entity.get(entity, ())]
 
-    def _derived_source_fk(self, entity, source_entity):
-        """Colonne de clé étrangère de 'entity' qui désigne la ligne de
-        'source_entity' à lire. Le validateur a garanti que la relation existe
-        et que la source n'est PAS le propriétaire — donc cette colonne est
-        fournie par le client, jamais déduite du jeton."""
-        for placement in self._compute_fk_placements().get(entity, []):
-            if placement["owner_entity"] == source_entity:
-                return placement["fk_column"]
-        # Le validateur a déjà exigé la relation : arriver ici signifie que la
-        # validation et le placement des clés étrangères ont divergé. Échouer à
-        # la génération vaut mieux qu'émettre 'data.None' dans le app.py.
-        raise ValueError(
-            f"Génération : aucune colonne de clé étrangère de '{entity}' ne "
-            f"désigne '{source_entity}', alors que le validateur l'exigeait "
-            f"pour 'derivedFrom'."
-        )
-
-    def _aggregated_field_names(self, entity):
+    def _aggregated_field_names(self, entity: str) -> list[str]:
         """Champs de 'entity' qui sont une SOMME de ses enfants (brique 12).
 
         Traités partout comme les champs 'derivedFrom' : absents du schéma
         Pydantic, et jamais lus dans `data`."""
-        return [plan.field for plan in self._effects("aggregate", target=entity)]
+        return [plan.field for plan in self.aggregated_by_entity.get(entity, ())]
 
     def _aggregation_recomputes(self, source_entity):
         """Sommes à recalculer après toute écriture sur 'source_entity'.
 
-        Retourne, par règle, la requête de recalcul et la colonne de clé
-        étrangère qui désigne le parent. La somme est RECALCULÉE depuis la table
-        plutôt qu'ajustée d'un delta : un ajustement se désynchronise dès qu'une
-        écriture échoue à mi-chemin, un recalcul est toujours juste. COALESCE
-        pour qu'un panier vidé retombe à 0 et non à NULL ; ROUND parce qu'une
-        somme de flottants dérive (0.1 + 0.2), et c'est un montant."""
+        La requête recalcule les lignes du parent dans la transaction de
+        l'écriture. COALESCE donne zéro à un panier vide et ROUND conserve
+        l'arrondi monétaire attendu par les routes existantes."""
         recalculs = []
-        placements = self._compute_fk_placements().get(source_entity, [])
-        for plan in self._effects("aggregate", trigger=source_entity):
-            fk = next((p["fk_column"] for p in placements
-                       if p["owner_entity"] == plan.target_entity), None)
-            # Le validateur a exigé la relation parent-enfant : arriver ici sans
-            # colonne signifie que validation et placement des clés étrangères
-            # ont divergé. Échouer à la génération vaut mieux qu'émettre une
-            # requête qui additionnerait la table entière.
-            if not fk:
-                raise ValueError(
-                    f"Génération : aucune colonne de clé étrangère de "
-                    f"'{source_entity}' ne désigne '{plan.target_entity}', alors que "
-                    f"le validateur l'exigeait pour 'sumOf'."
-                )
+        for plan in self.aggregations_by_source.get(source_entity, ()):
+            fk = plan.parent_fk
             recalculs.append({
                 "fk_column": fk,
-                "sql": (f'UPDATE "{plan.target_entity.lower()}" SET "{plan.field}" = '
+                "sql": (f'UPDATE "{plan.entity.lower()}" SET "{plan.field}" = '
                         f'(SELECT ROUND(COALESCE(SUM("{plan.source_field}"), 0), 2) '
                         f'FROM "{source_entity.lower()}" WHERE "{fk}" = ?) '
                         f'WHERE id = ?'),
             })
         return recalculs
 
-    def _decrement_fk_column(self, trigger_entity, rule):
-        """Colonne de 'trigger_entity' qui désigne l'enregistrement DÉCRÉMENTÉ,
-        ou None (point 92).
-
-        Source unique des trois branchements d'un `decrements`/`increments` —
-        création, modification, suppression. C'est ici qu'a vécu le bug du
-        point 86 : la colonne visée est celle qui pointe vers l'entité de la
-        RÈGLE, pas la relation « propriétaire », et les deux ne coïncident que
-        tant que l'entité déclenchante n'a qu'UNE relation entrante. Le calcul
-        était recopié à chaque branchement ; le recopier une fois de plus, c'est
-        rouvrir la porte à la troisième occurrence du même défaut."""
-        placements = self._compute_fk_placements().get(trigger_entity, [])
-        return next((p["fk_column"] for p in placements
-                     if p["owner_entity"] == rule["target_entity"]), None)
-
-    def _counter_fk_columns(self, trigger_entity):
-        """FK écrites par la branche compteur à la création.
-
-        Chaque colonne vient de `_decrement_fk_column`, quelle que soit la
-        position de la relation dans la spec. La liste est dédoublonnée pour
-        qu'une entité qui porte plusieurs effets sur la même cible n'ajoute
-        cette FK qu'une seule fois à son schéma et à son INSERT.
-        """
-        colonnes = []
-        for rule in self.reputation_rules_by_trigger.get(trigger_entity, []):
-            fk_column = self._decrement_fk_column(trigger_entity, rule)
-            if fk_column and fk_column not in colonnes:
-                colonnes.append(fk_column)
-        return colonnes
+    def _counter_fk_columns(self, trigger_entity: str) -> list[str]:
+        """Clés choisies par le client, dédoublonnées dans l'ordre des effets."""
+        return list(dict.fromkeys(
+            plan.target_fk for plan in self.reputation_rules_by_trigger.get(trigger_entity, ())
+        ))
 
     def _emit_categorization_lines(self, categorized_field, row_var, indent):
         """AJOUT (roadmap, écosystème de capacités -- brique 5) : génère le

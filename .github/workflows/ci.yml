@@ -78,7 +78,7 @@ jobs:
         run: ruff check src tests
 
       - name: Contrat IR strictement typé
-        run: python -m mypy src/monl/ir.py src/monl/errors.py src/monl/generator/emitters.py --strict
+        run: python -m mypy src/monl/ir.py src/monl/ir_types.py src/monl/planning.py src/monl/policies.py src/monl/errors.py src/monl/generator/emitters.py --strict
 
       - name: Recherche de code mort (confiance haute)
         run: vulture src/monl --min-confidence 90

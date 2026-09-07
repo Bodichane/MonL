@@ -1,8 +1,7 @@
 """L'enchaînement d'une compilation, et la carte des routes qu'elle produit.
 
-`_compute_route_map` est la SOURCE UNIQUE du regroupement des routes,
-partagée entre la génération FastAPI et le contrat frontend
-(`frontend_contract.py`) — ne pas dupliquer cette logique ailleurs."""
+Les routes sont analysées par `planning`, puis partagées entre la génération
+FastAPI et le contrat frontend sans recalcul dans les émetteurs."""
 
 import os
 import secrets
@@ -103,7 +102,7 @@ class PipelineMixin:
         return CompilationPlans(
             route_map=self._compute_route_map(),
             foreign_key_placements={
-                entity: tuple(dict(placement) for placement in values)
+                entity: tuple(placement.copy() for placement in values)
                 for entity, values in placements.items()
             },
             identity_foreign_keys={
@@ -123,10 +122,7 @@ class PipelineMixin:
                 entity: tuple(dict(lock) for lock in self._payment_locked_parents(entity))
                 for entity in self.entities
             },
-            reputation_rules_by_trigger={
-                entity: tuple(dict(rule) for rule in rules)
-                for entity, rules in self.reputation_rules_by_trigger.items()
-            },
+            reputation_rules_by_trigger=self.reputation_rules_by_trigger,
             entity_models=self.entity_models,
             access_policies=self.access_policies,
             actors=tuple(self.actors),
@@ -171,33 +167,5 @@ class PipelineMixin:
         return "\n".join(api_lines)
 
     def _compute_route_map(self) -> dict[tuple[str, str], RoutePlan]:
-        """Regroupe les actions par (type, cible) avec la liste des acteurs
-        autorisés et le 'tag' (nom du premier workflow qui déclare l'action)
-        -- extrait de _generate_secure_fastapi pour être réutilisé aussi par
-        _compute_actor_capabilities (le tableau de bord post-connexion a
-        besoin du même 'tag' que la vraie route pour appeler les fonctions
-        'custom' au bon endroit). Une seule source de vérité : si cette
-        logique de regroupement change un jour, les deux consommateurs
-        restent forcément synchronisés."""
-        if hasattr(self, "route_plans"):
-            return self.route_plans
-        route_map: dict[tuple[str, str], RoutePlan] = {}
-        for wf in self.workflows:
-            wf_name = wf["name"]
-            required_actor = wf["actor"]
-            for action in wf["actions"]:
-                act_type = action["type"]
-                target = action["target"]
-                base_target = target.split(".")[0] if "." in target else target
-                route_key = (act_type, base_target if act_type != "Execute" else target)
-                if route_key not in route_map:
-                    route_map[route_key] = RoutePlan(
-                        action=act_type,
-                        key=route_key[1],
-                        target=target,
-                        base_target=base_target,
-                        actors=set(),
-                        tags=[],
-                    )
-                route_map[route_key].allow(required_actor, wf_name)
-        return route_map
+        """Accès compatible au plan analysé une fois avant les émetteurs."""
+        return self.route_plans

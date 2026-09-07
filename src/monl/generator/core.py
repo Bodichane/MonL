@@ -5,10 +5,15 @@ lors du découpage en package — voir docs/design_decisions.md.
 """
 import os
 
-from ..ir import (
-    CompilationIR,
-    RelationModel,
+from ..ir import CompilationIR
+from ..planning import (
+    plan_aggregations,
+    plan_counters,
+    plan_derivations,
+    plan_relations,
+    plan_routes,
 )
+from ..policies import plan_access_policies, plan_entity_models
 from .admin_cli import AdminCliMixin
 from .calculs import CalculsMixin
 from .emitters import BackendEmitter
@@ -60,11 +65,7 @@ class MonlSecureGenerator(
         self.app_name = normalized_ast["meta"]["appName"]
         self.entities = normalized_ast["schema"]["entities"]
         self.relations = normalized_ast["schema"]["relations"]
-        self.relation_models = [
-            RelationModel(source=relation["source"], kind=relation["type"],
-                          target=relation["target"])
-            for relation in self.relations
-        ]
+        self.relation_models = plan_relations(self.relations)
         self.workflows = normalized_ast["security"]["workflows"]
         self.actors = normalized_ast["security"]["actors"]
         # AJOUT (bêta 3, correctif d'élévation de privilège) : seuls ces
@@ -146,9 +147,9 @@ class MonlSecureGenerator(
         # (incrémenter/décrémenter le champ ciblé sur la ligne liée,
         # retrouvée via la colonne de clé étrangère que la relation validée
         # garantit d'exister).
-        self.reputation_rules_by_trigger = {}
-        for r in normalized_ast["security"].get("reputation_rules", []):
-            self.reputation_rules_by_trigger.setdefault(r["trigger_entity"], []).append(r)
+        self.reputation_rules_by_trigger = plan_counters(
+            normalized_ast["security"].get("reputation_rules", []), self.relation_models,
+            normalized_ast["security"].get("field_constraints", {}))
         # AJOUT (roadmap, écosystème de capacités -- brique 5) : règles
         # 'categorized' regroupées par entité — voir _generate_secure_fastapi,
         # où les routes Read (liste + détail) de cette entité remplacent le
@@ -198,14 +199,12 @@ class MonlSecureGenerator(
         # brique se lit dans les deux sens — depuis le PARENT pour retirer le
         # champ des corps de requête, depuis l'ENFANT pour savoir quoi recalculer
         # après chaque écriture de ligne.
-        self.aggregated_by_entity = {}
-        self.aggregations_by_source = {}
-        for regle in normalized_ast["security"].get("aggregated_fields", []):
-            self.aggregated_by_entity.setdefault(regle["entity"], []).append(regle)
-            self.aggregations_by_source.setdefault(regle["source_entity"], []).append(regle)
-        self.derived_by_entity = {}
-        for regle in normalized_ast["security"].get("derived_fields", []):
-            self.derived_by_entity.setdefault(regle["entity"], []).append(regle)
+        aggregations = plan_aggregations(
+            normalized_ast["security"].get("aggregated_fields", []), self.relation_models)
+        self.aggregated_by_entity = aggregations.by_entity
+        self.aggregations_by_source = aggregations.by_source
+        self.derived_by_entity = plan_derivations(
+            normalized_ast["security"].get("derived_fields", []), self.relation_models)
         # POINT 85 : 'required'/'unique'/'min'/'max' ne produisaient RIEN — la
         # sortie était identique à l'octet avec ou sans elles. Regroupées par
         # entité : les bornes partent dans le schéma Pydantic (schemas.py),
@@ -274,10 +273,12 @@ class MonlSecureGenerator(
         # Vue typée commune aux consommateurs de la sémantique des champs.
         # Les dictionnaires historiques restent disponibles pendant la
         # migration des émetteurs SQL et API.
-        self.entity_models = self._build_entity_models()
+        self.entity_models = plan_entity_models(
+            self.entities, normalized_ast["security"], self.derived_by_entity,
+            self.aggregated_by_entity)
         # Carte de routes calculée avant les politiques qui en dépendent.
-        self.route_plans = self._compute_route_map()
-        self.access_policies = self._build_access_policies()
+        self.route_plans = plan_routes(self.workflows)
+        self.access_policies = plan_access_policies(normalized_ast["security"], self.route_plans)
         self.effect_plans = self._build_effect_plans()
         # Le catalogue de plans devient l'analyse canonique de cette instance.
         # Les anciens attributs restent exposés aux mixins pendant la migration,
