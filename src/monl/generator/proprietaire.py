@@ -258,10 +258,18 @@ class ProprietaireMixin:
         Le choix ne dépend PAS de l'ordre de déclaration des relations : seuls
         les parents acteurs sont candidats, et la règle 'ownedBy' tranche entre
         eux s'il y en a plusieurs.
+
+        Le résultat ne dépend que de l'IR, figée à la construction : il est
+        calculé UNE fois. Sept émetteurs l'interrogent depuis leurs boucles —
+        mesuré à 5 352 appels sur une spec de 1 668 lignes, chacun rebalayant
+        toutes les entités et toutes les relations.
         """
+        if self._identity_fk_caches is not None:
+            return self._identity_fk_caches
         route_map = self._compute_route_map()
         creatable = {plan.base_target for (act, _k), plan in route_map.items()
                      if act == "Create"}
+        placements = self._compute_fk_placements()
         identity_cols = {}
         for entity in self.entities:
             if entity not in creatable:
@@ -275,7 +283,7 @@ class ProprietaireMixin:
                 continue
             cibles_compteur = {r.target_entity
                                for r in self.reputation_rules_by_trigger.get(entity, [])}
-            candidats = [p for p in self._compute_fk_placements().get(entity, [])
+            candidats = [p for p in placements.get(entity, [])
                          if p["owner_entity"] in self.actors
                          # cible choisie par le client : vraie référence métier
                          and p["owner_entity"] not in cibles_compteur]
@@ -286,4 +294,5 @@ class ProprietaireMixin:
             choisi = next((p for p in candidats if p["owner_entity"] in proprietaires),
                           candidats[0])
             identity_cols.setdefault(entity, set()).add(choisi["fk_column"])
+        self._identity_fk_caches = identity_cols
         return identity_cols

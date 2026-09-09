@@ -439,7 +439,7 @@ EXCEPTIONS_DE_COMPLEXITE = {
     "monl/frontend_contract/roles_de_champs.py:_assign_field_roles": (39, "Attribution de rôles hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),
     "monl/generator/core.py:__init__": (20, "Initialisation du générateur ; analyse des relations, routes et champs calculés extraite dans planning, dette restante cliquetée."),
     "monl/generator/pipeline.py:build_compilation_plans": (19, "Assemblage de plans de compilation hors des cinq cibles ; dette cliquetée."),
-    "monl/generator/proprietaire.py:_identity_fk_columns": (16, "Déduction de colonnes hors des cinq cibles ; sa dette est conservée explicitement et cliquetée."),
+    "monl/generator/proprietaire.py:_identity_fk_columns": (17, "Déduction de colonnes hors des cinq cibles ; le point de décision ajouté est le garde du cache qui rend la compilation linéaire au lieu de cubique."),
     "monl/generator/routes_creation.py:_generate_create_route_lines": (41, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_lecture.py:_generate_read_route_lines": (49, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_lecture_filtree.py:_generate_read_route_lines_with_query": (51, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),

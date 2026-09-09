@@ -66,6 +66,12 @@ class MonlSecureGenerator(
         self.entities = normalized_ast["schema"]["entities"]
         self.relations = normalized_ast["schema"]["relations"]
         self.relation_models = plan_relations(self.relations)
+        # Deux analyses que les émetteurs interrogent depuis leurs boucles :
+        # calculées à la première demande, puis relues. Voir les méthodes qui
+        # les peuplent (`modele.py`, `proprietaire.py`) pour la mesure qui a
+        # rendu ces caches nécessaires.
+        self._fk_placements_caches = None
+        self._identity_fk_caches = None
         self.workflows = normalized_ast["security"]["workflows"]
         self.actors = normalized_ast["security"]["actors"]
         # AJOUT (bêta 3, correctif d'élévation de privilège) : seuls ces
