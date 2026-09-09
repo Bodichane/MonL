@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "projet": "monl-compiler",
+  "carte": "CARTE.md",
+  "plafond_lignes": 120,
+
+  "sections_obligatoires": [
+    "La phrase",
+    "Faire tourner",
+    "La preuve",
+    "La forme",
+    "Les frontières",
+    "Les décisions qu'on ne rediscute pas",
+    "Là où ça fait mal",
+    "Où on en est"
+  ],
+
+  "chemins": [
+    "src/monl/parser",
+    "src/monl/ast_validator",
+    "src/monl/ir.py",
+    "src/monl/planning.py",
+    "src/monl/generator",
+    "src/monl/generator/sandbox.py",
+    "src/monl/generator/runtime_pool.py",
+    "src/monl/frontend_contract",
+    "src/monl_platform",
+    "tests/test_architecture.py",
+    "exemples/01_portfolio.ml",
+    "exemples/assets",
+    "docs/BETA.md",
+    "docs/design_decisions.md",
+    "docs/SECURITE.md",
+    "CONTRIBUTING.md"
+  ],
+
+  "cli": {
+    "sous_commandes": [
+      "init", "compile", "run", "update", "diff", "usage",
+      "migrate", "frontend", "retouche", "assets", "content", "import"
+    ]
+  },
+
+  "tests": {
+    "collectes": 1549,
+    "tolerance": 0.1
+  },
+
+  "chemin_principal": {
+    "spec": "exemples/01_portfolio.ml",
+    "assets": "exemples/assets",
+    "artefacts": [
+      "app.py",
+      "schema.sql",
+      "manage.py",
+      "serve.py",
+      "monl.json",
+      "frontend_contract.json",
+      "Dockerfile",
+      "requirements.txt"
+    ],
+    "routes": 11,
+    "sonde_sante": "/health",
+    "reponse_sante": "{\"status\":\"ok\"}"
+  },
+
+  "preuve": {
+    "commit": "de92ea1",
+    "date": "2026-09-09",
+    "commande": "python -m pytest tests/ -rs",
+    "resultat": "1549 tests collectés ; exécution complète en CI"
+  }
+}

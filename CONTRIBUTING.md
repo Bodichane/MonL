@@ -39,9 +39,17 @@ est pire qu'un contrôle absent, parce qu'il rassure.
 
 ```bash
 ruff check src tests                                   # zéro signalement attendu
+python3 scripts/verifier_carte.py --preuve             # CARTE.md dit-elle encore vrai ?
 python3 -m pytest tests/ -q --cov=src --cov-report=term-missing
 python3 -m pytest tests/test_architecture.py -q        # frontières d'architecture
 ```
+
+`CARTE.md` est la page d'entrée du dépôt, et la seule documentation dont
+l'exactitude est une contrainte d'exécution plutôt qu'une intention : déplacer
+un module qu'elle cite, ajouter une sous-commande qu'elle n'annonce pas ou
+changer le nombre de routes produites par `exemples/01_portfolio.ml` fait
+échouer la CI. Si votre changement la dément, corrigez-la dans la même PR —
+c'est le seul moment où quelqu'un sait encore ce qui a changé.
 
 La CI rejoue tout cela sur Python 3.10, 3.12 et 3.14, et `main` est protégée :
 rien ne fusionne sans que les trois vérifications passent.

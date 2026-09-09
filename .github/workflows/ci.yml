@@ -38,7 +38,13 @@ jobs:
         python-version: ["3.10", "3.12", "3.14"]
 
     steps:
+      # `fetch-depth: 0` — sans l'historique, `scripts/verifier_carte.py` ne
+      # peut pas établir que le commit de preuve de CARTE.md est bien un
+      # ancêtre de HEAD ; il le dirait honnêtement au lieu d'échouer, mais un
+      # contrôle qui s'annonce non vérifiable en CI ne vérifie rien.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -73,6 +79,18 @@ jobs:
           # d'ici ne le voyait — seule la suite l'a dit, en s'arrêtant à la
           # collecte. Deux lignes ferment la porte au bon niveau.
           cd "$(mktemp -d)" && python -c "import monl_platform.app, monl_platform.mcp_server"
+
+      # CARTE.md est DESCRIPTIVE : contrairement à une spec `.ml`, qui produit
+      # le code et ne peut donc pas mentir, elle est écrite après lui et dérive
+      # en silence — `docs/BETA.md` annonçait encore le pooling de connexions
+      # comme « reste ouvert » alors que cd2a56e l'avait livré. Cette étape est
+      # ce qui sépare la carte d'une documentation de plus : chaque affirmation
+      # vérifiable y est rejouée, `--preuve` compris, qui recompile deux fois la
+      # même spec pour prouver le déterminisme et compte les routes réellement
+      # exposées par le backend produit. Placée avant la suite longue : c'est
+      # une minute pour éviter de lire une carte fausse pendant six mois.
+      - name: CARTE.md dit encore la vérité
+        run: python scripts/verifier_carte.py --preuve
 
       - name: Linter (jeu de règles de pyproject.toml)
         run: ruff check src tests

@@ -484,6 +484,7 @@ automatisée.
 
 | Fichier | Contenu |
 |---|---|
+| [CARTE.md](CARTE.md) | **Commencez ici** : le projet en dix minutes, une page, rejouée par la CI |
 | [QUICKSTART.md](QUICKSTART.md) | Le parcours complet, en trois étapes |
 | [docs/design_decisions.md](docs/design_decisions.md) | Le journal du projet : 115 points, chacun avec son *pourquoi* |
 | [docs/SECURITE.md](docs/SECURITE.md) | Modèle de sécurité |
