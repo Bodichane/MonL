@@ -68,6 +68,6 @@
     "commit": "de92ea1",
     "date": "2026-09-09",
     "commande": "python -m pytest tests/ -rs",
-    "resultat": "1549 tests collectés ; exécution complète en CI"
+    "resultat": "1532 passés, 16 sautés, 1 en échec (test_pool_de_connexions, machine sans libpq)"
   }
 }

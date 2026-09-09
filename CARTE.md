@@ -16,12 +16,10 @@ aucune IA n'écrit le backend.
 
 ```bash
 pip install -e ".[dev]"
-
 mkdir -p /tmp/demo
 cp exemples/01_portfolio.ml /tmp/demo/spec.ml
 cp -r exemples/assets /tmp/demo/assets   # asset déclaré mais absent = échec, exprès
 monl compile /tmp/demo/spec.ml --output /tmp/demo
-
 cd /tmp/demo && python -m uvicorn app:app --port 8000
 curl -s localhost:8000/health            # {"status":"ok"}
 ```
@@ -37,7 +35,7 @@ Mesuré le 2026-09-09 sur `de92ea1`, avec le venv du dépôt :
 
 | Quoi | Résultat |
 |---|---|
-| Suite de tests | 1532 passés, **1 en échec**, 16 sautés — 12 min 28, sans PostgreSQL |
+| Suite de tests | 1532 passés, 16 sautés, **1 en échec** — voir « Là où ça fait mal » |
 | `exemples/01_portfolio.ml` | 71 lignes de spec → 1207 lignes d'`app.py` + 60 de SQL |
 | Backend produit | 11 routes exposées, `/health` répond `{"status":"ok"}` |
 | Déterminisme | deux compilations de la même spec : artefacts identiques au bit près |
@@ -74,9 +72,8 @@ cette frontière s'inverse.
 
 Ce que le projet ne fait pas, et ne cherche pas à faire :
 
-- **L'IA n'écrit jamais le backend**, ni les permissions, ni la logique métier.
-  Elle n'intervient qu'au bout de la chaîne, pour le frontend, contre un
-  contrat déjà vérifié.
+- **L'IA n'écrit jamais le backend**, ni les permissions, ni la logique métier :
+  elle n'intervient qu'au bout, pour le frontend, contre un contrat vérifié.
 - **Aucun langage de requête n'est exposé** : filtrage et tri sont fermés,
   décidés côté serveur.
 - **Pas de panneau d'administration web** — en ligne de commande uniquement :
@@ -95,9 +92,8 @@ Ce que le projet ne fait pas, et ne cherche pas à faire :
 - **La CI échoue au lieu de sauter.** Un test sauté ne dit pas « rien à
   vérifier ici », il dit « je n'ai pas vérifié » — d'où `-rs`, qui nomme chaque
   saut et son motif.
-- **La couverture est mesurée séparément** sur le compilateur et sur la
-  plateforme, plancher à 90 % chacun : une moyenne unique avait laissé la
-  barrière tomber sans qu'aucun test n'échoue.
+- **La couverture est mesurée séparément** (compilateur, plateforme), plancher
+  90 % chacun : une moyenne unique avait laissé la barrière tomber en silence.
 
 ## Là où ça fait mal
 
@@ -108,8 +104,12 @@ Ce que le projet ne fait pas, et ne cherche pas à faire :
   annonce encore le pooling de connexions comme « reste ouvert » alors que
   `cd2a56e` l'a livré (`src/monl/generator/runtime_pool.py`). Cette page pèse
   5 Ko contre 285 Ko pour CLAUDE, CODEBASE_AUDIT, CHANGELOG et README réunis.
-- **La suite dure six minutes** parce qu'elle démarre de vrais serveurs. C'est
-  le prix assumé de la règle « prouvé par exécution », pas un défaut à corriger.
+- **`pytest tests/` n'est pas vert sans `libpq`.**
+  `test_pool_de_connexions.py::test_repli_sans_psycopg_pool…` importe le backend
+  produit dans un sous-processus sans la garde `ImportError` qu'a son voisin
+  `tests/test_postgresql.py` : il échoue là où les autres sautent en le disant.
+- **La suite dure six à douze minutes** parce qu'elle démarre de vrais serveurs.
+  Prix assumé de la règle « prouvé par exécution », pas un défaut à corriger.
 - **Restent non traités :** migrations descendantes destructives, secrets
   délégués (Vault, SSM), gouvernance du DSL, audit externe, modèle de menace.
 
