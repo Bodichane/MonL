@@ -443,7 +443,7 @@ EXCEPTIONS_DE_COMPLEXITE = {
     "monl/generator/routes_creation.py:_generate_create_route_lines": (41, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_lecture.py:_generate_read_route_lines": (49, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_lecture_filtree.py:_generate_read_route_lines_with_query": (51, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
-    "monl/generator/routes_modification.py:_generate_update_route_lines": (40, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
+    "monl/generator/routes_modification.py:_generate_update_route_lines": (35, "Émission de routes ligne par ligne : liste plate légitime ; la restitution de la brique 20 est passée en source unique partagée avec la route après-paiement."),
     "monl/generator/routes_paiement.py:_generate_payment_routes": (17, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_prestataires.py:_generate_postpayment_routes": (19, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),
     "monl/generator/routes_suppression.py:_generate_delete_route_lines": (27, "Émission de routes ligne par ligne : liste plate légitime, conservée hors des cinq cibles."),

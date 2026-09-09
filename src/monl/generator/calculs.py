@@ -40,6 +40,43 @@ class CalculsMixin:
             })
         return recalculs
 
+    def _lignes_restitution(self, enfant, fk_enfant, indent="    "):
+        """Rend au parent ce que ses lignes enfants avaient consommé.
+
+        Source UNIQUE de la restitution de la brique 20, partagée par les DEUX
+        routes qui peuvent faire basculer un champ vers sa valeur libératrice :
+        l'Update générique et, quand `writableAfterPayment` lui a pris le
+        champ, la route après-paiement. La recopier dans la seconde, c'est
+        rouvrir la porte du point 92 — un effet dont chaque branche garde sa
+        propre version finit par diverger.
+
+        Aucun plancher : on rétablit un état qui a existé et qui était valide.
+        """
+        lignes = []
+        for decompte in self.reputation_rules_by_trigger.get(enfant, []):
+            if decompte.direction != "decrements":
+                continue
+            champ = decompte.amount_field
+            quantite = "_l[1]" if champ else str(decompte.amount)
+            colonnes = (f'"{decompte.target_fk}", "{champ}"' if champ
+                        else f'"{decompte.target_fk}"')
+            lignes += [
+                f"{indent}cursor.execute('SELECT {colonnes} FROM "
+                f'"{enfant.lower()}" WHERE "{fk_enfant}" = ?\', (id,))',
+                f"{indent}for _l in cursor.fetchall():",
+                f"{indent}    cursor.execute('UPDATE "
+                f'"{decompte.target_entity.lower()}" SET '
+                f'"{decompte.target_field}" = "{decompte.target_field}" '
+                f"+ ? WHERE id = ?', (int({quantite} or 0), _l[0]))",
+            ]
+        return lignes
+
+    def _fk_enfant_libere(self, parent, enfant):
+        """Colonne de l'enfant qui désigne le parent dont l'état bascule."""
+        return next(
+            (p["fk_column"] for p in self._compute_fk_placements().get(enfant, [])
+             if p["owner_entity"] == parent), None)
+
     def _counter_fk_columns(self, trigger_entity: str) -> list[str]:
         """Clés choisies par le client, dédoublonnées dans l'ordre des effets."""
         return list(dict.fromkeys(
