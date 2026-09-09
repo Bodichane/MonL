@@ -95,6 +95,51 @@ class PrestatairesRoutesMixin:
             "",
         ]
 
+    def _lignes_bascule_apres_paiement(self, entite, config, table):
+        """Libération d'un effet depuis la route après-paiement (brique 20).
+
+        Le champ visé par `releases` peut appartenir à CETTE route et non à
+        l'Update générique : c'est alors ici qu'un statut atteint sa valeur
+        libératrice, donc ici que le stock doit revenir.
+
+        Deux différences avec la route générique, toutes deux dues au schéma
+        de cette route où les champs sont FACULTATIFS. La garde de
+        réactivation exige `is not None` : sans elle, un appel qui ne touche
+        qu'au numéro de suivi refuserait la commande annulée qu'il ne modifie
+        pas. Et la bascule ne vaut que si le champ est réellement fourni.
+        """
+        lignes = []
+        for regle in self.release_rules_by_entity.get(entite, []):
+            if regle["field"] not in config["fields"]:
+                continue  # l'Update générique garde ce champ, et sa bascule
+            enfant = regle["releases"]
+            fk_enfant = self._fk_enfant_libere(entite, enfant)
+            if not fk_enfant:
+                continue
+            champ, valeur = regle["field"], regle["value"]
+            lignes += [
+                f"    cursor.execute('SELECT \"{champ}\" FROM "
+                f'"{table}" WHERE id = ?\', (id,))',
+                "    _etat_avant = cursor.fetchone()",
+                # L'état libéré est TERMINAL : ce qui a été rendu n'est plus
+                # garanti disponible, et reprendre la commande donnerait du
+                # stock gratuit — famille du point 77.
+                f"    if (_etat_avant and _etat_avant[0] == {valeur!r}",
+                f"            and data.{champ} is not None "
+                f"and data.{champ} != {valeur!r}):",
+                "        conn.close()",
+                "        raise HTTPException(status_code=409, detail=(",
+                f"            \"Cet enregistrement est {valeur} : ce qu'il "
+                f"avait consommé a été rendu, \"",
+                "            'et rien ne garantit que ce soit encore disponible. "
+                "En créer un nouveau.'))",
+                f"    _bascule = (_etat_avant and _etat_avant[0] != {valeur!r}",
+                f"                and data.{champ} == {valeur!r})",
+                "    if _bascule:",
+            ]
+            lignes += self._lignes_restitution(enfant, fk_enfant, indent="        ")
+        return lignes
+
     def _generate_postpayment_routes(self):
         lignes = []
         for entite, config in sorted(self.postpayment_writable_by_entity.items()):
@@ -164,6 +209,12 @@ class PrestatairesRoutesMixin:
                 "        raise HTTPException(status_code=409, detail=(",
                 "            'Action disponible uniquement après confirmation du paiement'))",
             ]
+            # BRIQUE 20 sur un champ que cette route s'est réservé. Quand
+            # `writableAfterPayment` prend le champ d'une règle `releases`, il
+            # le retire du schéma de l'Update générique : la bascule doit donc
+            # vivre ICI, sinon annuler une commande PAYÉE ne rendrait jamais
+            # son stock — une perte silencieuse, pire que le 500 qu'on répare.
+            lignes += self._lignes_bascule_apres_paiement(entite, config, table)
             for field in config["fields"]:
                 update = sql.cat(
                     sql.kw("UPDATE "), sql.ident(table), sql.kw(" SET "),

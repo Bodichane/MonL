@@ -344,3 +344,88 @@ def test_annuler_ne_rend_que_SES_lignes(boutique):
     _appel(f"{base}/commande/{premiere}", {"statut": "annulée"}, jeton, methode="PUT")
 
     assert _stock(base) == depart - 2, "la libération a débordé sur l'autre commande"
+
+
+# --------------------------------------------------------------------------
+# Quand `writableAfterPayment` prend le champ : la libération le suit
+# --------------------------------------------------------------------------
+#
+# Cumulées sur le MÊME champ, les deux briques se contredisaient :
+# `writableAfterPayment` retire le champ du schéma Pydantic de l'Update
+# générique, dont la bascule continuait pourtant de lire `data.<champ>`. Tout
+# PUT répondait 500 — sur `exemples/02_boutique.ml`, pour le seul rôle qui a le
+# droit de l'appeler. Trouvé en compilant une spec de banc, pas en relisant.
+#
+# La bascule vit désormais dans la route qui écrit RÉELLEMENT le champ. La
+# déplacer sans l'y porter aurait remplacé un 500 bruyant par une perte
+# silencieuse : annuler une commande payée n'aurait plus rendu son stock.
+
+# `writableAfterPayment` exige un montant encaissable, donc CALCULÉ par le
+# serveur (point 82) : le sous-total de la ligne vient du prix catalogue, et
+# le montant de la commande en est la somme. Sommer un champ que le client
+# écrit serait refusé, et à raison.
+SPEC_APRES_PAIEMENT = SPEC.replace(
+    "actor Client selfRegister",
+    "actor Client selfRegister\nactor Gerant",
+).replace(
+    "entity Produit\n    nom: String\n    stock: Integer",
+    "entity Produit\n    nom: String\n    stock: Integer\n    prix: Money",
+).replace(
+    "entity Commande\n    statut: String",
+    "entity Commande\n    statut: String\n    montant: Money",
+).replace(
+    "entity Ligne\n    quantite: Integer",
+    "entity Ligne\n    quantite: Integer\n    sousTotal: Money",
+).replace(
+    'rule Commande.statut "annulée" releases Ligne',
+    'rule Commande.statut "annulée" releases Ligne\n'
+    "rule Ligne.sousTotal derivedFrom Produit.prix by quantite\n"
+    "rule Commande.montant sumOf Ligne.sousTotal\n"
+    "rule Commande.montant payable\n"
+    "rule Commande.statut writableAfterPayment Gerant",
+).replace(
+    'nom: "Halo RS", stock: 10',
+    'nom: "Halo RS", stock: 10, prix: 89.0',
+)
+
+
+def test_le_champ_pris_par_le_paiement_ne_casse_plus_lupdate(tmp_path, capsys):
+    """L'Update générique ne lit plus un champ absent de son schéma.
+
+    Le témoin porte sur la SOURCE générée : c'est là que vivait le 500, et une
+    lecture de `data.statut` hors de la route après-paiement le ramènerait.
+    """
+    (tmp_path / "spec.ml").write_text(SPEC_APRES_PAIEMENT, encoding="utf-8")
+    compile_project(str(tmp_path / "spec.ml"), str(tmp_path))
+    capsys.readouterr()
+    source = (tmp_path / "app.py").read_text(encoding="utf-8")
+
+    generique = source.split("def modifier_commande_apres_paiement")[0]
+    assert "data.statut" not in generique, (
+        "l'Update générique lit un champ que son schéma Pydantic ne porte "
+        "pas : tout PUT répondra 500")
+    assert "class CommandeSchema" in source
+    schema = source.split("class CommandeSchema")[1].split("class ")[0]
+    assert "statut" not in schema, "prémisse fausse : le champ est resté au schéma"
+
+
+def test_la_liberation_suit_le_champ_dans_la_route_apres_paiement(tmp_path, capsys):
+    """La bascule est émise là où le champ s'écrit — sinon elle disparaît.
+
+    Sans ce témoin, retirer la bascule de l'Update générique suffirait à rendre
+    la suite verte, en supprimant la restitution de stock au passage.
+    """
+    (tmp_path / "spec.ml").write_text(SPEC_APRES_PAIEMENT, encoding="utf-8")
+    compile_project(str(tmp_path / "spec.ml"), str(tmp_path))
+    capsys.readouterr()
+    source = (tmp_path / "app.py").read_text(encoding="utf-8")
+
+    route = source.split("def modifier_commande_apres_paiement")[1]
+    assert "_bascule" in route, "la libération ne suit pas le champ qui l'arme"
+    assert 'UPDATE "produit" SET "stock"' in route, (
+        "la bascule est émise mais ne rend rien")
+    # Les champs de cette route sont FACULTATIFS : sans cette garde, un appel
+    # qui ne touche pas au statut refuserait la commande qu'il ne modifie pas.
+    assert "data.statut is not None" in route, (
+        "le refus de réactivation se déclencherait sur un appel qui ne "
+        "modifie pas le statut")

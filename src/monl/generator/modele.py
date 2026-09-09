@@ -59,8 +59,18 @@ class ModeleMixin:
                 and (target is None or plan.target_entity == target)]
 
     def _compute_fk_placements(self) -> dict[str, list[ForeignKeyPlacement]]:
-        """Adaptateur des émetteurs vers l'analyse typée des clés étrangères."""
-        return plan_foreign_keys(self.relation_models)
+        """Adaptateur des émetteurs vers l'analyse typée des clés étrangères.
+
+        Le placement ne dépend que de `relation_models`, figé à la
+        construction : il est donc calculé UNE fois. Les émetteurs
+        l'interrogent depuis des boucles imbriquées — mesuré à 270 305 appels
+        pour une spec de 1 668 lignes, soit 102 s passés à reconstruire le
+        même index. Le recalculer à chaque appel rendait le coût de
+        compilation cubique en nombre d'entités.
+        """
+        if self._fk_placements_caches is None:
+            self._fk_placements_caches = plan_foreign_keys(self.relation_models)
+        return self._fk_placements_caches
 
     def _compute_seed_data(self):
         """AJOUT (roadmap frontend, bloc 'seed') : regroupe les données de

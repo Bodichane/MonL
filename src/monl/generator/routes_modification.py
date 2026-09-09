@@ -206,11 +206,16 @@ class ModificationRoutesMixin:
         # paires. C'est ce que seul un vrai serveur montre.
         for regle in self.release_rules_by_entity.get(base_target, []):
             enfant = regle["releases"]
-            fk_enfant = next(
-                (p["fk_column"] for p
-                 in self._compute_fk_placements().get(enfant, [])
-                 if p["owner_entity"] == base_target), None)
+            fk_enfant = self._fk_enfant_libere(base_target, enfant)
             if not fk_enfant:
+                continue
+            # Le champ peut avoir été retiré de CETTE route par
+            # `writableAfterPayment` : il n'est alors pas dans son schéma
+            # Pydantic, et lire `data.<champ>` ici répondait 500 à tout appel
+            # (mesuré sur `exemples/02_boutique.ml`, pour le seul rôle qui a le
+            # droit d'appeler la route). La bascule vit dans la route qui écrit
+            # RÉELLEMENT le champ — voir `_generate_postpayment_routes`.
+            if regle["field"] in postpaiement_upd:
                 continue
             # L'état est lu AVANT la transaction : le refus qui suit doit
             # pouvoir fermer la connexion, ce que le `except
@@ -238,25 +243,10 @@ class ModificationRoutesMixin:
                 f"                and data.{regle['field']} == {regle['value']!r})",
             ]
             lignes_ecriture.append("if _bascule:")
-            for decompte in self.reputation_rules_by_trigger.get(enfant, []):
-                if decompte.direction != "decrements":
-                    continue
-                fk_cible = decompte.target_fk
-                champ = decompte.amount_field
-                quantite = "_l[1]" if champ else str(decompte.amount)
-                colonnes = (f'"{fk_cible}", "{champ}"' if champ
-                            else f'"{fk_cible}"')
-                lignes_ecriture += [
-                    f"    cursor.execute('SELECT {colonnes} FROM "
-                    f'"{enfant.lower()}" WHERE "{fk_enfant}" = ?\', (id,))',
-                    "    for _l in cursor.fetchall():",
-                    # Aucun plancher : on rend un état qui a existé et
-                    # qui était valide (même raison qu'au point 92).
-                    f"        cursor.execute('UPDATE "
-                    f'"{decompte.target_entity.lower()}" SET '
-                    f'"{decompte.target_field}" = "{decompte.target_field}" '
-                    f"+ ? WHERE id = ?', (int({quantite} or 0), _l[0]))",
-                ]
+            # Aucun plancher : on rend un état qui a existé et qui était
+            # valide (même raison qu'au point 92). Source unique partagée
+            # avec la route après-paiement.
+            lignes_ecriture += self._lignes_restitution(enfant, fk_enfant)
         # BRIQUE 19 (point 91) : le décompte suit la quantité MODIFIÉE.
         # `decrements` ne s'armait qu'à la création : créer une ligne à 1
         # puis la passer à 4 facturait quatre paires et n'en décomptait
